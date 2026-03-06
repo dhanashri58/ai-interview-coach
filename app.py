@@ -1087,17 +1087,120 @@ if st.session_state.interview_complete and st.session_state.report:
     # ── Tab 3: Per-question review (full feedback now shown) ──
     with tab3:
         st.subheader("📋 Detailed Question-by-Question Review")
+        
+        # 1. Overall interview score summary
+        st.markdown(f"""
+<div style="background:#1e293b; padding:1.5rem; border-radius:12px; margin-bottom:2.5rem; text-align:center; border:1px solid #334155; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+    <h3 style="margin:0; font-size:1.3rem; color:#94a3b8; font-family:'Inter',sans-serif;">Overall Interview Score</h3>
+    <div style="font-size:3.5rem; font-weight:800; color:{score_color}; margin:0.5rem 0; font-family:'Inter',sans-serif;">{score}/10</div>
+    <div style="font-size:1.1rem; color:#cbd5e1; font-weight:500;">Performance Level: <strong style="color:white;">{perf_level.replace('_', ' ').title()}</strong></div>
+</div>
+""", unsafe_allow_html=True)
+
         if not st.session_state.answer_history:
             st.info("No answers were recorded.")
-        for i, rec in enumerate(st.session_state.answer_history, 1):
-            sc = rec['score']
-            sc_cls = "score-high" if sc >= 7 else "score-medium" if sc >= 5 else "score-low"
-            with st.expander(f"Q{i}: {rec['question'][:80]}…  —  Score: {sc}/10", expanded=False):
-                st.markdown(f"**Question:** {rec['question']}")
-                st.markdown(f"**Your Answer:** {rec['answer']}")
-                st.markdown(f"**Score:** <span class='{sc_cls}'>{sc}/10</span>", unsafe_allow_html=True)
-                if rec.get('feedback'):
-                    st.markdown(format_feedback(rec['feedback']), unsafe_allow_html=True)
+        else:
+            total_qs = len(st.session_state.answer_history)
+            import re
+            
+            for i, rec in enumerate(st.session_state.answer_history, 1):
+                sc = rec.get('score', 0)
+                sc_cls = "#10b981" if sc >= 7 else "#f59e0b" if sc >= 5 else "#ef4444"
+                
+                raw_ans = rec.get('answer', '').strip()
+                # 2. Handle Edge Cases
+                if not raw_ans or raw_ans.lower() in ["none", "null", "skipped"]:
+                    ans_html = "<div style='color:#94a3b8; font-style:italic; padding:0.5rem 0;'>No response detected for this question.</div>"
+                else:
+                    ans_html = f"<div style='color:#f8fafc; line-height:1.6; font-size:1.05rem;'>{raw_ans}</div>"
+
+                fb = rec.get('feedback', {})
+                if not fb:
+                    fb = {"strengths":[], "weaknesses":[], "suggestions":[], "ideal_answer":"Evaluation returned null."}
+
+                strengths_html = "".join([f"<li style='margin-bottom:6px;'>{s}</li>" for s in fb.get('strengths', [])])
+                weaknesses_html = "".join([f"<li style='margin-bottom:6px;'>{w}</li>" for w in fb.get('weaknesses', [])])
+                suggestions_html = "".join([f"<li style='margin-bottom:6px;'>{s}</li>" for s in fb.get('suggestions', [])])
+                
+                ideal_ans = fb.get('ideal_answer', "Not provided.")
+                # First, extract code blocks
+                code_blocks = []
+                def replacer(match):
+                    code_blocks.append(match.group(2))
+                    idx = len(code_blocks) - 1
+                    lang_class = f' class="{match.group(1)}"' if match.group(1) else ""
+                    return f'<pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code{lang_class}>__CODEBLOCK_{idx}__</code></pre>'
+                
+                ideal_ans_html = re.sub(r'```(\w+)?\n(.*?)\n```', replacer, ideal_ans, flags=re.DOTALL)
+                # Next, replace newlines in the normal text with <br>
+                ideal_ans_html = ideal_ans_html.replace('\n', '<br>')
+                # Finally, restore the code blocks with their original newlines
+                for idx, code_content in enumerate(code_blocks):
+                    ideal_ans_html = ideal_ans_html.replace(f'__CODEBLOCK_{idx}__', code_content.replace('<', '&lt;').replace('>', '&gt;'))
+
+                # Note: No indentation used in the f-string below so Streamlit's Markdown parser 
+                # doesn't mistakenly wrap the HTML in a <pre> block (which caused the raw HTML bug!)
+                card_html = f"""
+<div style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:1.8rem; margin-bottom:2.5rem; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
+    
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:1.2rem; margin-bottom:1.5rem;">
+        <span style="color:#94a3b8; font-size:1.1rem; font-weight:700; font-family:'Inter',sans-serif;">Question {i} of {total_qs}</span>
+        <span style="background:#1e293b; color:#f8fafc; padding:6px 16px; border-radius:20px; font-weight:700; font-size:1rem; border:1px solid #334155;">
+            Score: <span style="color:{sc_cls};">{sc}/10</span>
+        </span>
+    </div>
+    
+    <!-- Question -->
+    <div style="margin-bottom:1.8rem;">
+        <div style="color:#64748b; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Question</div>
+        <div style="color:#f8fafc; font-size:1.15rem; font-weight:600; line-height:1.5;">{rec['question']}</div>
+    </div>
+
+    <!-- Candidate Answer -->
+    <div style="margin-bottom:2rem; background:#1e293b; padding:1.2rem 1.5rem; border-radius:10px; border-left:5px solid #3b82f6;">
+        <div style="color:#94a3b8; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Candidate Answer</div>
+        {ans_html}
+    </div>
+
+    <!-- Grid: Strengths & Weaknesses -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <!-- Strengths Card -->
+        <div style="background:#064e3b; padding:1.4rem; border-radius:10px; border:1px solid #047857;">
+            <h5 style="color:#34d399; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">✅ Strengths</h5>
+            <ul style="color:#d1fae5; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
+                {strengths_html if strengths_html else "<li style='opacity:0.8;'>No specific strengths identified.</li>"}
+            </ul>
+        </div>
+        
+        <!-- Weaknesses Card -->
+        <div style="background:#7f1d1d; padding:1.4rem; border-radius:10px; border:1px solid #b91c1c;">
+            <h5 style="color:#f87171; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">🔧 Areas to Improve</h5>
+            <ul style="color:#fee2e2; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
+                {weaknesses_html if weaknesses_html else "<li style='opacity:0.8;'>No specific weaknesses identified.</li>"}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Suggestions Card -->
+    <div style="background:#1e3a8a; padding:1.4rem; border-radius:10px; border:1px solid #1d4ed8; margin-bottom:1.5rem;">
+        <h5 style="color:#60a5fa; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">💡 Suggestions</h5>
+        <ul style="color:#dbeafe; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
+            {suggestions_html if suggestions_html else "<li style='opacity:0.8;'>No specific suggestions provided.</li>"}
+        </ul>
+    </div>
+
+    <!-- Ideal Answer Card -->
+    <div style="background:#4c1d95; padding:1.4rem; border-radius:10px; border:1px solid #6d28d9;">
+        <h5 style="color:#c084fc; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">🎯 Ideal Answer & Concepts</h5>
+        <div style="color:#ede9fe; font-size:1rem; line-height:1.6;">
+            {ideal_ans_html}
+        </div>
+    </div>
+    
+</div>
+"""
+                st.markdown(card_html, unsafe_allow_html=True)
 
     # ── Tab 4: Learning path ──
     with tab4:
