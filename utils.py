@@ -148,40 +148,57 @@ def get_confetti_animation():
     """
 
 def get_robot_avatar(emotion="neutral"):
-    """Returns robot avatar HTML with different emotions"""
-    avatars = {
-        "neutral": """
-            <svg width="100" height="100" viewBox="0 0 100 100" class="float">
-                <circle cx="50" cy="50" r="40" fill="#667eea" opacity="0.2"/>
-                <circle cx="35" cy="40" r="5" fill="#667eea"/>
-                <circle cx="65" cy="40" r="5" fill="#667eea"/>
-                <path d="M35 60 Q50 70 65 60" stroke="#667eea" stroke-width="3" fill="none"/>
-                <rect x="45" y="20" width="10" height="15" fill="#667eea" opacity="0.3"/>
-            </svg>
-        """,
-        "happy": """
-            <svg width="100" height="100" viewBox="0 0 100 100" class="bounce">
-                <circle cx="50" cy="50" r="40" fill="#10b981" opacity="0.2"/>
-                <circle cx="35" cy="40" r="5" fill="#10b981"/>
-                <circle cx="65" cy="40" r="5" fill="#10b981"/>
-                <path d="M35 60 Q50 75 65 60" stroke="#10b981" stroke-width="3" fill="none"/>
-                <rect x="45" y="20" width="10" height="15" fill="#10b981" opacity="0.3"/>
-            </svg>
-        """,
-        "thinking": """
-            <svg width="100" height="100" viewBox="0 0 100 100" class="rotate" style="animation-duration: 3s;">
-                <circle cx="50" cy="50" r="40" fill="#f59e0b" opacity="0.2"/>
-                <circle cx="35" cy="40" r="5" fill="#f59e0b"/>
-                <circle cx="65" cy="40" r="5" fill="#f59e0b"/>
-                <circle cx="50" cy="60" r="3" fill="#f59e0b"/>
-                <rect x="45" y="20" width="10" height="15" fill="#f59e0b" opacity="0.3"/>
-                <circle cx="80" cy="20" r="8" fill="#f59e0b" opacity="0.2">
-                    <animate attributeName="r" values="8;12;8" dur="1s" repeatCount="indefinite"/>
-                </circle>
-            </svg>
-        """
+    """
+    Returns a polished AI interviewer avatar SVG.
+    Emotions: 'neutral' | 'happy' | 'thinking' | 'listening'
+    """
+    # Base colours per emotion
+    colours = {
+        "neutral":   ("#667eea", "#764ba2", "float"),
+        "happy":     ("#10b981", "#059669", "bounce"),
+        "thinking":  ("#f59e0b", "#d97706", "pulse"),
+        "listening": ("#ea4335", "#c62828", "pulse"),
     }
-    return avatars.get(emotion, avatars["neutral"])
+    c1, c2, anim = colours.get(emotion, colours["neutral"])
+
+    return f"""
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <svg width="130" height="130" viewBox="0 0 130 130" class="{anim}"
+           xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="bg_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"  stop-color="{c1}" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="{c2}" stop-opacity="0.15"/>
+          </linearGradient>
+          <linearGradient id="body_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"  stop-color="{c1}"/>
+            <stop offset="100%" stop-color="{c2}"/>
+          </linearGradient>
+        </defs>
+        <!-- Background glow circle -->
+        <circle cx="65" cy="65" r="58" fill="url(#bg_grad)" />
+        <!-- Head -->
+        <rect x="32" y="28" width="66" height="56" rx="16" ry="16" fill="url(#body_grad)" opacity="0.95"/>
+        <!-- Visor -->
+        <rect x="38" y="34" width="54" height="30" rx="8" ry="8" fill="#0f172a" opacity="0.85"/>
+        <!-- Eyes -->
+        <circle cx="52" cy="49" r="7" fill="{c1}" opacity="0.9"/>
+        <circle cx="78" cy="49" r="7" fill="{c1}" opacity="0.9"/>
+        <circle cx="54" cy="47" r="2.5" fill="white" opacity="0.8"/>
+        <circle cx="80" cy="47" r="2.5" fill="white" opacity="0.8"/>
+        <!-- Mouth / speaker -->
+        <rect x="46" y="73" width="38" height="6" rx="3" fill="{c1}" opacity="0.7"/>
+        <!-- Antenna -->
+        <line x1="65" y1="28" x2="65" y2="14" stroke="{c1}" stroke-width="3"
+              stroke-linecap="round"/>
+        <circle cx="65" cy="12" r="5" fill="{c1}">
+          <animate attributeName="opacity" values="1;0.3;1" dur="1.2s" repeatCount="indefinite"/>
+        </circle>
+        <!-- Shoulders / body stub -->
+        <rect x="24" y="84" width="82" height="20" rx="10" fill="url(#body_grad)" opacity="0.6"/>
+      </svg>
+    </div>
+    """
 
 def get_loading_spinner():
     """Returns loading spinner HTML"""
@@ -310,47 +327,80 @@ def format_feedback(feedback):
     
     return html
 
-def record_audio():
-    """Record audio and convert to text"""
-    if not VOICE_AVAILABLE:
-        st.warning("Voice input is not available. Please install required packages: pip install speechrecognition pyttsx3 PyAudio")
+def speech_to_text(audio_bytes: bytes) -> str | None:
+    """
+    Convert raw audio bytes (WAV / PCM from audio-recorder-streamlit)
+    to a text string using the Google Speech Recognition API.
+
+    Returns:
+        str  — transcribed text, or
+        None — if recognition failed (error already displayed to user)
+    """
+    if not audio_bytes:
         return None
-    
     try:
+        import speech_recognition as sr
+        from io import BytesIO
+
         recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            with st.spinner("🎤 Listening... Speak now!"):
-                recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=30)
-        
-        with st.spinner("🔄 Processing your speech..."):
-            text = recognizer.recognize_google(audio)
-            return text
-    
-    except sr.WaitTimeoutError:
-        st.error("No speech detected. Please try again.")
-        return None
+        # Adjust sensitivity for background noise
+        recognizer.energy_threshold = 300
+        recognizer.dynamic_energy_threshold = True
+
+        audio_file = BytesIO(audio_bytes)
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio_data)
+        return text.strip()
+
     except sr.UnknownValueError:
-        st.error("Could not understand audio. Please try again.")
+        # Silence or unintelligible speech
+        st.warning(
+            "⚠️ Could not understand your answer. "
+            "Please speak clearly, avoid background noise, or type below."
+        )
         return None
-    except sr.RequestError:
-        st.error("Speech recognition service error. Please try again.")
+    except sr.RequestError as req_err:
+        # Network / API error
+        st.error(
+            f"❌ Speech recognition service unavailable: {req_err}. "
+            "Please check your internet connection or type your answer."
+        )
         return None
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
+    except Exception as generic_err:
+        st.error(f"❌ Transcription error: {generic_err}")
         return None
 
-def text_to_speech(text):
-    """Convert text to speech"""
-    if not VOICE_AVAILABLE:
-        return
-    
+
+def text_to_speech_autoplay(text: str) -> str:
+    """
+    Convert text to an MP3 via gTTS and return an invisible HTML
+    <audio autoplay> tag so Streamlit plays it in the browser.
+
+    Returns raw HTML string (safe to pass to st.markdown(…, unsafe_allow_html=True)).
+    Falls back silently if gTTS or network is unavailable.
+    """
+    if not text or not text.strip():
+        return ""
     try:
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
-    except Exception as e:
-        st.error(f"Text-to-speech error: {str(e)}")
+        from gtts import gTTS
+        from io import BytesIO
+        import base64
+
+        tts = gTTS(text=text, lang="en", slow=False)
+        fp = BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        b64 = base64.b64encode(fp.read()).decode("utf-8")
+        return (
+            f'<audio autoplay="true" controls="false" '
+            f'src="data:audio/mp3;base64,{b64}" '
+            f'style="display:none;"></audio>'
+        )
+    except Exception:
+        # TTS failure must never crash the interview — fall back silently
+        return ""
 
 def save_interview_session(session_data, filename=None):
     """Save interview session to file"""

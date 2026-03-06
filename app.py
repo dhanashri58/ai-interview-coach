@@ -1,1283 +1,1160 @@
 """
-Main Streamlit Application - AI Interview Coach
-Professional Edition v1.0
-"""
-# Add these imports at the top with other imports
-from utils import (
-    get_typing_animation, get_confetti_animation, get_robot_avatar,
-    get_loading_spinner, get_progress_ring, get_welcome_animation,
-    get_success_animation
-)
+AI Interview Coach — Professional Edition v3.0
+Main Streamlit Application
 
-# Import your custom modules
-from knowledge_base import KnowledgeBase
-from question_selector import QuestionSelector
-from answer_evaluator import AnswerEvaluator
-from performance_report import PerformanceReport
-from utils import *
+Architecture:
+  - knowledge_base.py  : Question bank + ideal answers (UNCHANGED)
+  - question_selector.py: Best-First heuristic selector (UNCHANGED)
+  - answer_evaluator.py : Forward-chaining evaluator (UNCHANGED)
+  - performance_report.py: Analytics & learning path (UNCHANGED)
+  - utils.py           : Animations, TTS, STT helpers (extended)
+  - app.py             : UI orchestration (this file)
+
+Interview Flow (new):
+  Stage 0 — Intro      : AI greets candidate by name via TTS
+  Stage 1 — Questions  : Ask → Listen → Store (NO per-question feedback)
+  Stage 2 — Wrap-up    : AI thanks candidate via TTS
+  Stage 3 — Report     : Full evaluation shown after interview ends
+"""
+
+# ---------------------------------------------------------------------------
+# IMPORTS
+# ---------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import time
 import json
 
-# Import your custom modules
+# Backend logic engines (never modified)
 from knowledge_base import KnowledgeBase
 from question_selector import QuestionSelector
 from answer_evaluator import AnswerEvaluator
 from performance_report import PerformanceReport
-from utils import *
 
-# Page configuration
+# Utility helpers (TTS, STT, animations)
+from utils import (
+    get_typing_animation, get_robot_avatar,
+    get_difficulty_level, format_feedback,
+    text_to_speech_autoplay, speech_to_text,
+    get_progress_ring
+)
+
+# st.components for embedding native HTML/JS camera (no server relay needed)
+import streamlit.components.v1 as components
+
+# Browser microphone recording
+try:
+    from audio_recorder_streamlit import audio_recorder
+    AUDIO_RECORDER_AVAILABLE = True
+except ImportError:
+    AUDIO_RECORDER_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="AI Interview Coach - Professional Edition",
+    page_title="AI Interview Coach — Professional",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# =============================================================================
-# PROFESSIONAL CSS STYLING
-# =============================================================================
+# ---------------------------------------------------------------------------
+# GLOBAL CSS — Google Meet–inspired dark interview room + sidebar polish
+# ---------------------------------------------------------------------------
 st.markdown("""
-    <style>
-    /* Main container styling */
-    .main {
-        padding: 0rem 1rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Professional headers */
-    .main-header {
-        font-size: 3.5rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 0.5rem;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        animation: fadeIn 1s ease-in;
-    }
-    
-    .sub-header {
-        font-size: 1.2rem;
-        color: #718096;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-weight: 300;
-        animation: slideUp 0.8s ease-out;
-    }
-    
-    /* Animations */
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @keyframes slideUp {
-        from { transform: translateY(20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-    
-    /* Card styling */
-    .css-1r6slb0, .stCard {
-        background: white;
-        border-radius: 15px;
-        padding: 1.5rem;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border: 1px solid rgba(102, 126, 234, 0.1);
-    }
-    
-    .css-1r6slb0:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 40px rgba(102, 126, 234, 0.2);
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 0.75rem 1.5rem;
-        font-weight: 600;
-        border-radius: 10px;
-        transition: all 0.3s ease;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        font-size: 0.9rem;
-        box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25);
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 15px rgba(102, 126, 234, 0.4);
-    }
-    
-    .stButton > button:active {
-        transform: translateY(0);
-    }
-    
-    /* Form styling */
-    .stForm {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
-        padding: 2rem;
-        border-radius: 20px;
-        border: 1px solid rgba(102, 126, 234, 0.2);
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
-    }
-    
-    /* Input fields */
-    .stTextInput > div > div > input {
-        border-radius: 10px;
-        border: 2px solid #e2e8f0;
-        padding: 0.75rem;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    /* Select boxes */
-    .stSelectbox > div > div > select {
-        border-radius: 10px;
-        border: 2px solid #e2e8f0;
-        padding: 0.5rem;
-        font-size: 1rem;
-    }
-    
-    /* Metric cards */
-    .metric-card {
-        background: white;
-        border-radius: 15px;
-        padding: 1.5rem;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        border-left: 4px solid #667eea;
-    }
-    
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #2d3748;
-        margin: 0.5rem 0;
-    }
-    
-    .metric-label {
-        font-size: 0.9rem;
-        color: #718096;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    /* Progress bar */
-    .stProgress > div > div {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
-        height: 10px;
-    }
-    
-    /* Success/Error messages */
-    .stSuccess {
-        background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%);
-        color: #22543d;
-        padding: 1rem 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #48bb78;
-        animation: slideIn 0.5s ease;
-    }
-    
-    .stError {
-        background: linear-gradient(135deg, #fed7d7 0%, #feb2b2 100%);
-        color: #742a2a;
-        padding: 1rem 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #f56565;
-        animation: slideIn 0.5s ease;
-    }
-    
-    .stWarning {
-        background: linear-gradient(135deg, #feebc8 0%, #fbd38d 100%);
-        color: #7b341e;
-        padding: 1rem 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #ed8936;
-        animation: slideIn 0.5s ease;
-    }
-    
-    @keyframes slideIn {
-        from { transform: translateX(-20px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    
-    /* Tabs styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-        background-color: #f7fafc;
-        padding: 0.5rem;
-        border-radius: 15px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background: none;
-        border-radius: 10px;
-        color: #718096;
-        font-weight: 500;
-        padding: 0.75rem 1.5rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white !important;
-    }
-    
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
-        border-radius: 10px;
-        font-weight: 500;
-        padding: 1rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .streamlit-expanderHeader:hover {
-        background: linear-gradient(135deg, #e4e8f0 0%, #d0d9e8 100%);
-    }
-    
-    /* Footer */
-    .footer {
-        text-align: center;
-        padding: 2rem;
-        color: #a0aec0;
-        font-size: 0.9rem;
-        border-top: 1px solid #e2e8f0;
-        margin-top: 3rem;
-    }
-    
-    /* Professional badges */
-    .badge {
-        display: inline-block;
-        padding: 0.35rem 1rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin: 0.25rem;
-    }
-    
-    .badge-beginner {
-        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-        color: #92400e;
-        border: 1px solid #fbbf24;
-    }
-    
-    .badge-intermediate {
-        background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
-        color: #1e40af;
-        border: 1px solid #3b82f6;
-    }
-    
-    .badge-advanced {
-        background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
-        color: #991b1b;
-        border: 1px solid #ef4444;
-    }
-    
-    .badge-expert {
-        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-        color: #065f46;
-        border: 1px solid #10b981;
-    }
-    
-    /* Question box */
-    .question-box {
-        background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        border: 2px solid #667eea;
-        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.2);
-    }
-    
-    .question-text {
-        font-size: 1.3rem;
-        font-weight: 500;
-        color: #1e293b;
-        line-height: 1.6;
-    }
-    
-    .question-meta {
-        color: #475569;
-        font-size: 0.9rem;
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 1px solid rgba(102, 126, 234, 0.3);
-    }
-    
-    /* Feedback box */
-    .feedback-box {
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        border: 1px solid #e2e8f0;
-    }
-    
-    /* Score colors */
-    .score-high {
-        color: #10b981;
-        font-weight: 700;
-        font-size: 1.2rem;
-    }
-    
-    .score-medium {
-        color: #f59e0b;
-        font-weight: 700;
-        font-size: 1.2rem;
-    }
-    
-    .score-low {
-        color: #ef4444;
-        font-weight: 700;
-        font-size: 1.2rem;
-    }
-    
-    /* Sidebar */
-    .css-1d391kg {
-        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    }
-    
-    /* Headers in sidebar */
-    .sidebar-header {
-        color: #1e293b;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #667eea;
-    }
-    
-    /* Responsive design */
-    @media (max-width: 768px) {
-        .main-header {
-            font-size: 2rem;
-        }
-        
-        .sub-header {
-            font-size: 1rem;
-        }
-        
-        .question-text {
-            font-size: 1.1rem;
-        }
-    }
-    
-    /* Loading spinner */
-    .stSpinner > div {
-        border-color: #667eea transparent #667eea transparent !important;
-    }
-    
-    /* Checkbox */
-    .stCheckbox > div > label > div:first-child {
-        background-color: #667eea !important;
-    }
-    
-    /* Radio buttons */
-    .stRadio > div {
-        gap: 1rem;
-    }
-    
-    .stRadio > div > label {
-        background: white;
-        padding: 0.5rem 1rem;
-        border-radius: 10px;
-        border: 2px solid #e2e8f0;
-        transition: all 0.3s ease;
-    }
-    
-    .stRadio > div > label:hover {
-        border-color: #667eea;
-        background: #f0f4ff;
-    }
-    
-    /* Tooltip */
-    .stTooltip {
-        background: #1e293b;
-        color: white;
-        border-radius: 5px;
-        padding: 0.5rem;
-        font-size: 0.85rem;
-    }
-    
-    /* Dividers */
-    hr {
-        margin: 2rem 0;
-        border: 0;
-        height: 1px;
-        background: linear-gradient(135deg, transparent, #667eea, transparent);
-    }
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Global ── */
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+/* ── Meet header bar ── */
+.meet-header {
+    background: #202124;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.meet-title { font-size: 1rem; font-weight: 600; color: #e8eaed; }
+.meet-meta  { font-size: 0.85rem; color: #9aa0a6; }
+.status-dot {
+    display: inline-block; width:10px; height:10px;
+    border-radius: 50%; margin-right: 6px;
+}
+.dot-live { background:#34a853; animation: pulse-dot 1.5s infinite; }
+.dot-idle { background:#9aa0a6; }
+@keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:.6; transform:scale(1.3); }
+}
+
+/* ── Video panels ── */
+.panel-ai {
+    background: #2d2f31;
+    border: 2px solid #3c4043;
+    border-radius: 14px;
+    padding: 1.25rem;
+    text-align: center;
+    min-height: 280px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative;
+}
+.panel-candidate {
+    background: #1a1b1e;
+    border: 2px solid #3c4043;
+    border-radius: 14px;
+    padding: 1.25rem;
+    text-align: center;
+    min-height: 280px;
+    position: relative;
+}
+.panel-label {
+    position: absolute; bottom: 12px; left: 14px;
+    background: rgba(0,0,0,0.6);
+    color:white; font-size:0.8rem; font-weight:500;
+    padding: 3px 10px; border-radius: 20px;
+}
+
+/* ── Speaking indicator ── */
+.speaking-ring {
+    border: 3px solid #34a853;
+    border-radius: 50%; padding: 6px;
+    animation: speak-pulse 0.8s infinite alternate;
+    display: inline-block;
+}
+@keyframes speak-pulse {
+    from { box-shadow: 0 0 4px #34a853; }
+    to   { box-shadow: 0 0 18px #34a853; }
+}
+.listening-badge {
+    background: #ea4335; color:white;
+    font-size:0.78rem; font-weight:600;
+    padding: 4px 14px; border-radius: 20px;
+    animation: pulse-dot 1s infinite;
+    display: inline-block; margin-top: 6px;
+}
+
+/* ── Meet control bar ── */
+.control-bar {
+    background: #202124;
+    border-radius: 14px;
+    padding: 0.6rem 1rem;
+    display: flex; justify-content: center; gap: 1rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+/* ── Question card ── */
+.q-card {
+    background: linear-gradient(135deg,#1a237e 0%,#283593 100%);
+    color: white;
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+    border-left: 5px solid #667eea;
+    margin: 0.75rem 0;
+    box-shadow: 0 6px 20px rgba(102,126,234,0.25);
+}
+.q-number { font-size:0.75rem; opacity:0.75; text-transform:uppercase; letter-spacing:0.5px; }
+.q-text   { font-size:1.15rem; font-weight:500; line-height:1.6; margin-top:0.4rem; }
+.q-topic  { font-size:0.8rem; opacity:0.6; margin-top:0.6rem; }
+
+/* ── Badge styles ── */
+.badge {
+    display:inline-block; padding:0.3rem 0.9rem; border-radius:9999px;
+    font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;
+}
+.badge-beginner     { background:#fef3c7; color:#92400e; border:1px solid #fbbf24; }
+.badge-intermediate { background:#bfdbfe; color:#1e40af; border:1px solid #3b82f6; }
+.badge-advanced     { background:#fecaca; color:#991b1b; border:1px solid #ef4444; }
+.badge-expert       { background:#d1fae5; color:#065f46; border:1px solid #10b981; }
+.badge-needs_practice { background:#fee2e2; color:#991b1b; }
+
+/* ── Metric cards ── */
+.metric-card {
+    background:white; border-radius:14px; padding:1.25rem;
+    text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.07);
+    border-left:4px solid #667eea;
+}
+.metric-value { font-size:1.9rem; font-weight:700; color:#1e293b; }
+.metric-label { font-size:0.8rem; color:#718096; text-transform:uppercase; letter-spacing:0.5px; }
+
+/* ── Professional sidebar header ── */
+.sidebar-header {
+    color:#1e293b; font-weight:600; margin-bottom:0.4rem;
+    padding-bottom:0.4rem; border-bottom:2px solid #667eea;
+}
+
+/* ── Feedback box ── */
+.feedback-box {
+    background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);
+    padding:1.25rem; border-radius:14px; margin:0.75rem 0;
+    border:1px solid #e2e8f0;
+}
+
+/* ── Score colours ── */
+.score-high   { color:#10b981; font-weight:700; font-size:1.1rem; }
+.score-medium { color:#f59e0b; font-weight:700; font-size:1.1rem; }
+.score-low    { color:#ef4444; font-weight:700; font-size:1.1rem; }
+
+/* ── Welcome hero ── */
+.hero-box {
+    background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    padding:2.5rem 3rem; border-radius:20px; color:white;
+    text-align:center; box-shadow:0 20px 40px rgba(102,126,234,0.3);
+    margin: 1rem 0 2rem;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    color:white; border:none; border-radius:10px;
+    font-weight:600; letter-spacing:0.4px;
+    box-shadow:0 4px 8px rgba(102,126,234,0.3);
+    transition: transform .2s, box-shadow .2s;
+}
+.stButton > button:hover {
+    transform:translateY(-2px);
+    box-shadow:0 8px 16px rgba(102,126,234,0.4);
+}
+
+/* ── Progress bar ── */
+.stProgress > div > div {
+    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    border-radius:10px; height:9px;
+}
+
+/* ── Footer ── */
+.footer {
+    text-align:center; padding:1.5rem;
+    color:#a0aec0; font-size:0.85rem;
+    border-top:1px solid #e2e8f0; margin-top:3rem;
+}
+hr { margin:1.5rem 0; border:0; height:1px;
+     background:linear-gradient(135deg,transparent,#667eea,transparent); }
+</style>
 """, unsafe_allow_html=True)
 
-# =============================================================================
-# INITIALIZE SESSION STATE
-# =============================================================================
-def init_session_state():
-    """Initialize all session state variables"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.kb = KnowledgeBase()
-        st.session_state.selector = QuestionSelector(st.session_state.kb)
-        st.session_state.evaluator = AnswerEvaluator(st.session_state.kb)
-        st.session_state.reporter = PerformanceReport()
-        st.session_state.messages = []
-        st.session_state.current_question = None
-        st.session_state.question_history = []
-        st.session_state.answer_history = []
-        st.session_state.interview_active = False
-        st.session_state.interview_complete = False
-        st.session_state.user_profile = {}
-        st.session_state.report = None
-        st.session_state.current_feedback = None
-        st.session_state.session_start_time = datetime.now()
-        st.session_state.total_sessions = 0
-        st.session_state.questions_answered = 0
+# Inject typing / bounce / float CSS from utils
+st.markdown(get_typing_animation(), unsafe_allow_html=True)
 
-# Call initialization
+# ---------------------------------------------------------------------------
+# SESSION STATE — initialise only once per browser session
+# ---------------------------------------------------------------------------
+def init_session_state():
+    """
+    Initialise all session-level variables.
+    New variables added for interview-flow stage management:
+      interview_stage : 'intro' | 'questions' | 'wrapup' | 'report'
+      intro_spoken    : bool — has the greeting TTS been emitted?
+      mic_muted       : bool — user has muted their mic
+      cam_off         : bool — user has turned camera off
+      interview_start_time : datetime — for elapsed timer
+    """
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized        = True
+        # ── backend engines ──
+        st.session_state.kb                 = KnowledgeBase()
+        st.session_state.selector           = QuestionSelector(st.session_state.kb)
+        st.session_state.evaluator          = AnswerEvaluator(st.session_state.kb)
+        st.session_state.reporter           = PerformanceReport()
+        # ── interview state ──
+        st.session_state.interview_active   = False
+        st.session_state.interview_complete = False
+        st.session_state.interview_stage    = 'idle'   # idle/intro/questions/wrapup/report
+        st.session_state.intro_spoken       = False
+        st.session_state.current_question   = None
+        st.session_state.question_history   = []       # IDs of asked questions
+        st.session_state.answer_history     = []       # {question, answer, score, …}
+        st.session_state.messages           = []
+        st.session_state.report             = None
+        st.session_state.last_played_q_id   = None
+        st.session_state.interview_start_time = None
+        # ── media controls ──
+        st.session_state.mic_muted          = False
+        st.session_state.cam_off            = False
+        # ── user profile ──
+        st.session_state.user_profile       = {}
+
 init_session_state()
 
-# =============================================================================
-# SIDEBAR - PROFESSIONAL PROFILE FORM
-# =============================================================================
+# ---------------------------------------------------------------------------
+# HELPER — elapsed timer string
+# ---------------------------------------------------------------------------
+def get_elapsed_time() -> str:
+    """Return HH:MM elapsed since interview started."""
+    if not st.session_state.interview_start_time:
+        return "00:00"
+    delta = datetime.now() - st.session_state.interview_start_time
+    mins  = int(delta.total_seconds() // 60)
+    secs  = int(delta.total_seconds() % 60)
+    return f"{mins:02d}:{secs:02d}"
+
+# ---------------------------------------------------------------------------
+# HELPER — reset interview for a fresh session
+# ---------------------------------------------------------------------------
+def reset_interview():
+    """Clear all interview-related state for a new session."""
+    st.session_state.interview_active    = False
+    st.session_state.interview_complete  = False
+    st.session_state.interview_stage     = 'idle'
+    st.session_state.intro_spoken        = False
+    st.session_state.current_question    = None
+    st.session_state.question_history    = []
+    st.session_state.answer_history      = []
+    st.session_state.messages            = []
+    st.session_state.report              = None
+    st.session_state.last_played_q_id    = None
+    st.session_state.interview_start_time = None
+    st.session_state.mic_muted           = False
+    st.session_state.cam_off             = False
+    # Reset selector history so questions restart cleanly
+    st.session_state.selector.reset_history()
+
+# ---------------------------------------------------------------------------
+# HELPER — process a submitted answer (voice or text)
+# ---------------------------------------------------------------------------
+def process_answer(answer_text: str):
+    """
+    Evaluate the given answer text, store the record, advance to the next
+    question or trigger wrap-up.  All feedback is STORED but NOT shown yet
+    (deferred until the Report stage).
+    """
+    q = st.session_state.current_question
+    if not q or not answer_text.strip():
+        return
+
+    feedback = st.session_state.evaluator.evaluate_answer(q['id'], answer_text)
+
+    record = {
+        "question_id" : q['id'],
+        "question"    : q['question'],
+        "answer"      : answer_text,
+        "score"       : feedback["score"],
+        "topic"       : q.get("topic", "general"),
+        "difficulty"  : get_difficulty_level(q),
+        "feedback"    : feedback,
+        "timestamp"   : datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    st.session_state.answer_history.append(record)
+    st.session_state.question_history.append(q['id'])
+
+    st.session_state.selector.update_performance(
+        q['id'], feedback["score"], q.get("topic", "general")
+    )
+
+    total_q = 10   # configurable interview length
+    if len(st.session_state.answer_history) < total_q:
+        next_q = st.session_state.selector.select_next_question(
+            st.session_state.user_profile, st.session_state.answer_history
+        )
+        st.session_state.current_question = next_q
+        st.session_state.last_played_q_id = None   # triggers TTS for new question
+    else:
+        # All questions done → wrapup stage
+        st.session_state.interview_stage = 'wrapup'
+        st.session_state.current_question = None
+
+# ===========================================================================
+# ██████████████████████  SIDEBAR  ██████████████████████
+# ===========================================================================
 with st.sidebar:
-    # Professional Header with Logo
+    # ── Branding ──
     st.markdown("""
-        <div style="text-align: center; padding: 20px 10px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        width: 100px; height: 100px; border-radius: 50%; margin: 0 auto 15px;
-                        display: flex; align-items: center; justify-content: center;
-                        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);">
-                <span style="font-size: 3rem; color: white;">🎯</span>
+        <div style="text-align:center; padding:18px 10px;">
+            <div style="background:linear-gradient(135deg,#667eea,#764ba2);
+                        width:90px; height:90px; border-radius:50%; margin:0 auto 12px;
+                        display:flex; align-items:center; justify-content:center;
+                        box-shadow:0 8px 20px rgba(102,126,234,0.35);">
+                <span style="font-size:2.6rem; color:white;">🎯</span>
             </div>
-            <h2 style="color: #1E293B; margin: 0; font-size: 1.8rem;">AI Interview Coach</h2>
-            <p style="color: #64748B; margin: 5px 0 0; font-size: 0.9rem;">Professional Edition v2.0</p>
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        height: 3px; width: 50px; margin: 15px auto 0; border-radius: 3px;"></div>
+            <h2 style="color:#1E293B; margin:0; font-size:1.6rem;">AI Interview Coach</h2>
+            <p style="color:#64748B; margin:4px 0 0; font-size:0.85rem;">Professional Edition v3.0</p>
+            <div style="background:linear-gradient(135deg,#667eea,#764ba2);
+                        height:3px; width:50px; margin:12px auto 0; border-radius:3px;"></div>
         </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
-    # User Profile Section with Professional Styling
-    st.markdown("""
-        <div class="sidebar-header">
-            👤 Candidate Profile
-        </div>
-        <p style='color: #64748B; font-size: 0.85rem; margin: 5px 0 15px;'>
-            Complete your profile to begin the assessment
-        </p>
-    """, unsafe_allow_html=True)
-    
-    # Professional Form
-    with st.form("professional_profile_form", clear_on_submit=False):
-        # Personal Information Section
+
+    # ── Profile form ──
+    st.markdown('<div class="sidebar-header">👤 Candidate Profile</div>', unsafe_allow_html=True)
+    st.markdown("<p style='color:#64748B;font-size:0.82rem;margin:4px 0 12px;'>Complete your profile to begin</p>", unsafe_allow_html=True)
+
+    with st.form("profile_form", clear_on_submit=False):
         st.markdown("##### 📋 Personal Information")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            name = st.text_input(
-                "Full Name*",
-                value=st.session_state.user_profile.get("name", ""),
-                placeholder="John Doe",
-                help="Enter your full legal name"
-            )
-        
-        with col2:
-            email = st.text_input(
-                "Email Address*",
-                value=st.session_state.user_profile.get("email", ""),
-                placeholder="john.doe@example.com",
-                help="We'll send your assessment reports here"
-            )
-        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            name = st.text_input("Full Name *", value=st.session_state.user_profile.get("name",""),
+                                 placeholder="Jane Doe")
+        with col_b:
+            email = st.text_input("Email *", value=st.session_state.user_profile.get("email",""),
+                                  placeholder="jane@example.com")
+
         st.markdown("---")
-        
-        # Professional Details
         st.markdown("##### 🎯 Career Goals")
-        
-        target_role = st.selectbox(
-            "Target Position*",
-            options=[
-                "Software Engineer",
-                "Data Scientist",
-                "Backend Developer",
-                "Frontend Developer",
-                "DevOps Engineer",
-                "Data Analyst",
-                "Machine Learning Engineer",
-                "Full Stack Developer",
-                "Cloud Architect",
-                "Product Manager",
-                "QA Engineer",
-                "Systems Administrator"
-            ],
-            index=0,
-            help="Select the role you're preparing for"
-        )
-        
-        # Experience Level with Professional Grading
-        st.markdown("##### 📊 Experience Level")
-        
-        experience = st.radio(
-            "Select your experience level*",
-            options=[
-                "Entry Level (0-2 years)",
-                "Mid Level (3-5 years)",
-                "Senior Level (5+ years)",
-                "Lead/Manager (8+ years)"
-            ],
-            index=0,
-            horizontal=False,
-            help="Your current professional experience level"
-        )
-        
-        # Skills Selection with Categories
-        st.markdown("##### 💻 Technical Skills")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            programming_languages = st.multiselect(
-                "Programming Languages",
-                options=["Python", "Java", "JavaScript", "C++", "C#", "Ruby", "Go", "Rust", "PHP", "Swift", "Kotlin"],
-                default=[s for s in st.session_state.user_profile.get("skills", []) if s in ["Python", "Java", "JavaScript", "C++", "C#", "Ruby", "Go", "Rust", "PHP", "Swift", "Kotlin"]]
-            )
-            
-            databases = st.multiselect(
-                "Databases",
-                options=["SQL", "MongoDB", "PostgreSQL", "MySQL", "Oracle", "Redis", "Elasticsearch"],
-                default=[s for s in st.session_state.user_profile.get("skills", []) if s in ["SQL", "MongoDB", "PostgreSQL", "MySQL", "Oracle", "Redis", "Elasticsearch"]]
-            )
-        
-        with col2:
-            frameworks = st.multiselect(
-                "Frameworks & Libraries",
-                options=["React", "Node.js", "Django", "Flask", "Spring", "Angular", "Vue.js", "TensorFlow", "PyTorch"],
-                default=[s for s in st.session_state.user_profile.get("skills", []) if s in ["React", "Node.js", "Django", "Flask", "Spring", "Angular", "Vue.js", "TensorFlow", "PyTorch"]]
-            )
-            
-            tools = st.multiselect(
-                "Tools & Platforms",
-                options=["AWS", "Docker", "Kubernetes", "Git", "Linux", "Jenkins", "Terraform", "Ansible"],
-                default=[s for s in st.session_state.user_profile.get("skills", []) if s in ["AWS", "Docker", "Kubernetes", "Git", "Linux", "Jenkins", "Terraform", "Ansible"]]
-            )
-        
-        # Combine all skills
-        all_skills = programming_languages + databases + frameworks + tools
-        
-        # Additional Information (Optional)
-        with st.expander("📋 Additional Information (Optional)"):
-            col1, col2 = st.columns(2)
-            with col1:
-                linkedin = st.text_input(
-                    "LinkedIn Profile",
-                    placeholder="https://linkedin.com/in/username"
-                )
-                github = st.text_input(
-                    "GitHub Profile",
-                    placeholder="https://github.com/username"
-                )
-            
-            with col2:
-                years_exp = st.slider(
-                    "Years of Experience",
-                    min_value=0,
-                    max_value=30,
-                    value=st.session_state.user_profile.get("years_experience", 2),
-                    step=1
-                )
-                
-                education = st.selectbox(
-                    "Highest Education",
-                    options=["High School", "Bachelor's", "Master's", "PhD", "Bootcamp", "Self-taught"],
-                    index=1
-                )
-        
-        st.markdown("---")
-        
-        # Submit Button with Professional Styling
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            submitted = st.form_submit_button(
-                "🚀 SAVE PROFILE & START",
-                use_container_width=True,
-                type="primary"
-            )
-        
+
+        target_role = st.selectbox("Target Role *", [
+            "Software Engineer", "Data Scientist", "Backend Developer",
+            "Frontend Developer", "DevOps Engineer", "Data Analyst",
+            "Machine Learning Engineer", "Full Stack Developer",
+            "Cloud Architect", "Product Manager", "QA Engineer"
+        ])
+
+        experience = st.radio("Experience Level *", [
+            "Entry Level (0-2 years)", "Mid Level (3-5 years)",
+            "Senior Level (5+ years)", "Lead/Manager (8+ years)"
+        ], index=0, horizontal=False)
+
+        st.markdown("##### 💻 Skills")
+        col_c, col_d = st.columns(2)
+        with col_c:
+            langs = st.multiselect("Languages", ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"],
+                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"]])
+            dbs   = st.multiselect("Databases",  ["SQL","MongoDB","PostgreSQL","MySQL","Redis"],
+                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["SQL","MongoDB","PostgreSQL","MySQL","Redis"]])
+        with col_d:
+            fws   = st.multiselect("Frameworks", ["React","Django","Flask","Spring","Angular","TensorFlow"],
+                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["React","Django","Flask","Spring","Angular","TensorFlow"]])
+            tools = st.multiselect("Tools",      ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"],
+                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"]])
+
+        all_skills = langs + dbs + fws + tools
+
+        _, col_mid, _ = st.columns([1,2,1])
+        with col_mid:
+            submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
+
         if submitted:
-            # Validation
             errors = []
-            if not name:
-                errors.append("Name is required")
-            if not email:
-                errors.append("Email is required")
-            elif "@" not in email or "." not in email:
-                errors.append("Please enter a valid email address")
-            if len(all_skills) < 2:
-                errors.append("Please select at least 2 skills")
-            
+            if not name:  errors.append("Name is required")
+            if not email or "@" not in email: errors.append("Valid email required")
+            if len(all_skills) < 1: errors.append("Select at least 1 skill")
             if errors:
-                for error in errors:
-                    st.error(f"❌ {error}")
+                for e in errors: st.error(f"❌ {e}")
             else:
-                # Save to session state
                 st.session_state.user_profile = {
-                    "name": name,
-                    "email": email,
+                    "name": name, "email": email,
                     "target_role": target_role,
                     "experience_level": experience.split("(")[0].strip().lower(),
-                    "skills": all_skills,
-                    "linkedin": linkedin,
-                    "github": github,
-                    "years_experience": years_exp,
-                    "education": education,
-                    "profile_complete": True,
+                    "skills": all_skills, "profile_complete": True,
                     "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
-                
-                # Success message with animation
-                st.success("""
-                    ✅ Profile Saved Successfully!
-                    
-                    You're all set to begin your interview practice.
-                    Click 'Start Interview' below to begin.
-                """)
+                st.success("✅ Profile saved! Click Start Interview below.")
                 st.balloons()
-                
-                # Show profile summary
-                with st.expander("📊 Profile Summary"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write("**Name:**", name)
-                        st.write("**Role:**", target_role)
-                        st.write("**Level:**", experience)
-                    with col2:
-                        st.write("**Skills:**", len(all_skills))
-                        st.write("**Experience:**", years_exp, "years")
-    
+
     st.markdown("---")
-    
-    # Interview Controls
-    st.markdown("""
-        <div class="sidebar-header">
-            🎮 Interview Controls
-        </div>
-    """, unsafe_allow_html=True)
-    
+
+    # ── Interview Controls ──
+    st.markdown('<div class="sidebar-header">🎮 Interview Controls</div>', unsafe_allow_html=True)
+
     if not st.session_state.interview_active and not st.session_state.interview_complete:
         if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
             if st.session_state.user_profile:
-                st.session_state.interview_active = True
-                st.session_state.messages = []
-                st.session_state.question_history = []
-                st.session_state.answer_history = []
-                st.session_state.current_question = st.session_state.selector.select_next_question(
+                reset_interview()
+                first_q = st.session_state.selector.select_next_question(
                     st.session_state.user_profile, []
                 )
+                st.session_state.current_question    = first_q
+                st.session_state.interview_active    = True
+                st.session_state.interview_stage     = 'intro'
+                st.session_state.interview_start_time = datetime.now()
                 st.rerun()
             else:
-                st.warning("⚠️ Please save your profile first!")
-    
+                st.warning("⚠️ Please complete and save your profile first!")
+
     if st.session_state.interview_active:
-        if st.button("⏹️ END INTERVIEW", use_container_width=True):
-            st.session_state.interview_active = False
-            st.session_state.interview_complete = True
-            # Generate final report
-            with st.spinner("Generating your performance report..."):
+        if st.button("⏹️ END INTERVIEW EARLY", use_container_width=True):
+            with st.spinner("Generating report…"):
                 st.session_state.report = st.session_state.reporter.generate_report(
-                    st.session_state.user_profile,
-                    st.session_state.answer_history
+                    st.session_state.user_profile, st.session_state.answer_history
                 )
-            st.success("✅ Interview completed! Check your report below.")
+            st.session_state.interview_active   = False
+            st.session_state.interview_complete = True
+            st.session_state.interview_stage    = 'report'
             st.rerun()
-    
+
     if st.session_state.interview_complete:
         if st.button("🔄 START NEW SESSION", use_container_width=True):
-            st.session_state.interview_active = False
-            st.session_state.interview_complete = False
-            st.session_state.current_question = None
-            st.session_state.messages = []
-            st.session_state.question_history = []
-            st.session_state.answer_history = []
-            st.session_state.report = None
+            reset_interview()
             st.rerun()
-    
+
     st.markdown("---")
-    
-    # Session Statistics
-    if st.session_state.user_profile:
-        st.markdown("""
-            <div class="sidebar-header">
-                📊 Session Statistics
-            </div>
-        """, unsafe_allow_html=True)
-        
+
+    # ── Live stats ──
+    if st.session_state.interview_active:
+        st.markdown('<div class="sidebar-header">📊 Live Stats</div>', unsafe_allow_html=True)
         col1, col2 = st.columns(2)
+        answered = len(st.session_state.answer_history)
         with col1:
-            st.markdown("""
+            st.markdown(f"""
                 <div class="metric-card">
-                    <div style="font-size: 1.5rem; color: #667eea;">📝</div>
-                    <div class="metric-value">""" + str(len(st.session_state.answer_history)) + """</div>
-                    <div class="metric-label">Questions</div>
-                </div>
-            """, unsafe_allow_html=True)
-        
+                    <div style="font-size:1.4rem; color:#667eea;">📝</div>
+                    <div class="metric-value">{answered}</div>
+                    <div class="metric-label">Answered</div>
+                </div>""", unsafe_allow_html=True)
         with col2:
-            if st.session_state.answer_history:
-                avg_score = sum([a.get("score", 0) for a in st.session_state.answer_history]) / len(st.session_state.answer_history)
-                score_color = "score-high" if avg_score >= 7 else "score-medium" if avg_score >= 5 else "score-low"
-                st.markdown("""
-                    <div class="metric-card">
-                        <div style="font-size: 1.5rem; color: #667eea;">⭐</div>
-                        <div class="metric-value"><span class='""" + score_color + """'>""" + f"{avg_score:.1f}" + """/10</span></div>
-                        <div class="metric-label">Average Score</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown("""
-                    <div class="metric-card">
-                        <div style="font-size: 1.5rem; color: #667eea;">⭐</div>
-                        <div class="metric-value">0/10</div>
-                        <div class="metric-label">Average Score</div>
-                    </div>
-                """, unsafe_allow_html=True)
-        
-        # Progress bar
-        if st.session_state.answer_history:
-            progress = min(len(st.session_state.answer_history) / 10, 1.0)
-            st.progress(progress)
-            st.write(f"**Progress:** {len(st.session_state.answer_history)}/10 questions")
-    
-    st.markdown("---")
-    
-    # Quick Tips
-    with st.expander("💡 Quick Tips"):
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size:1.4rem; color:#667eea;">⏱️</div>
+                    <div class="metric-value" style="font-size:1.3rem;">{get_elapsed_time()}</div>
+                    <div class="metric-label">Elapsed</div>
+                </div>""", unsafe_allow_html=True)
+
+        prog = min(answered / 10, 1.0)
+        st.progress(prog)
+        st.caption(f"Progress: {answered}/10 questions")
+        st.markdown("---")
+
+    # ── Tips ──
+    with st.expander("💡 Interview Tips"):
         st.markdown("""
-            - Be specific in your answers
-            - Include examples from experience
-            - Explain concepts in your own words
-            - Practice regularly for best results
-            - Review feedback after each answer
+- Speak clearly and at a moderate pace
+- Use the **text box** as a fallback if mic fails
+- Be specific — give examples from experience
+- Answer in full sentences for better scoring
+- Click **Record Answer** then speak; click again to stop
         """)
 
-# =============================================================================
-# MAIN CONTENT AREA
-# =============================================================================
-col1, col2, col3 = st.columns([1, 3, 1])
-with col2:
-    st.markdown('<h1 class="main-header">🎯 AI Interview Coach</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Professional Interview Preparation with Real-time AI Feedback</p>', unsafe_allow_html=True)
+# ===========================================================================
+# ██████████████████████  MAIN CONTENT  ██████████████████████
+# ===========================================================================
 
-# =============================================================================
-# WELCOME SECTION (No Active Interview)
-# =============================================================================
+# ── Page title ──
+_, hcol, _ = st.columns([1, 3, 1])
+with hcol:
+    st.markdown('<h1 style="font-size:2.8rem;font-weight:700;'
+                'background:linear-gradient(135deg,#667eea,#764ba2);'
+                '-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
+                'text-align:center;margin-bottom:0.3rem;">🎯 AI Interview Coach</h1>',
+                unsafe_allow_html=True)
+    st.markdown('<p style="text-align:center;color:#718096;font-size:1.05rem;margin-bottom:0;">'
+                'Professional Interview Preparation with Real-time AI Feedback</p>',
+                unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ===========================================================================
+# ██  STAGE 0: WELCOME (idle)  ██
+# ===========================================================================
 if not st.session_state.interview_active and not st.session_state.interview_complete:
-    # Welcome Banner
+
     st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    padding: 3rem;
-                    border-radius: 20px;
-                    margin: 2rem 0;
-                    color: white;
-                    text-align: center;
-                    box-shadow: 0 20px 40px rgba(102, 126, 234, 0.3);">
-            <h2 style="font-size: 2.5rem; margin-bottom: 1rem;">Welcome to Your AI Interview Coach!</h2>
-            <p style="font-size: 1.2rem; opacity: 0.9;">Master your interview skills with personalized AI feedback</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Features in columns
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; height: 100%;">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
-                <h3>Personalized Questions</h3>
-                <p style="color: #666;">Questions tailored to your target role and experience level using intelligent algorithms</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; height: 100%;">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">🤖</div>
-                <h3>AI-Powered Feedback</h3>
-                <p style="color: #666;">Instant evaluation with strengths, weaknesses, and ideal answer examples</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown("""
-            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; height: 100%;">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
-                <h3>Detailed Analytics</h3>
-                <p style="color: #666;">Comprehensive performance reports with learning path recommendations</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # How it works
-    with st.expander("📋 How It Works", expanded=True):
-        col1, col2 = st.columns(2)
-        with col1:
+        <div class="hero-box">
+            <h2 style="font-size:2.2rem;margin-bottom:0.6rem;">
+                Welcome to Your AI Interview Room 🎙️
+            </h2>
+            <p style="font-size:1.1rem;opacity:0.9;">
+                Practice real interview conversations with live camera, voice answers, and instant AI analysis.
+            </p>
+        </div>""", unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+    for col, icon, title, desc in [
+        (c1, "📹", "Live Camera Room", "Webcam-enabled interview room mimicking real video calls"),
+        (c2, "🎙️", "Voice Answers",   "Speak your answers — automatic speech recognition"),
+        (c3, "📊", "Post-Interview Report", "Full evaluation only after completing all questions"),
+    ]:
+        with col:
+            st.markdown(f"""
+                <div style="background:white;padding:1.5rem;border-radius:14px;
+                            text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+                    <div style="font-size:2.5rem;margin-bottom:0.7rem;">{icon}</div>
+                    <h4 style="margin:0 0 0.5rem;">{title}</h4>
+                    <p style="color:#666;font-size:0.9rem;margin:0;">{desc}</p>
+                </div>""", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    with st.expander("📋 How the Interview Works", expanded=True):
+        col_l, col_r = st.columns(2)
+        with col_l:
             st.markdown("""
-                ### For Candidates
-                1. **Complete your profile** with target role and skills
-                2. **Start interview** and answer personalized questions
-                3. **Receive instant feedback** after each answer
-                4. **Get detailed report** with improvement areas
-                
-                ### Key Features
-                - Adaptive question difficulty
-                - Real-time answer evaluation
-                - Performance tracking
-                - Personalized learning path
+**Step-by-step flow:**
+1. Save your profile in the sidebar
+2. Click **Start New Interview**
+3. AI greets you and begins asking questions
+4. Speak into your microphone (or type) to answer
+5. After all 10 questions, the AI wraps up
+6. View your full performance report
             """)
-        
-        with col2:
+        with col_r:
             st.markdown("""
-                ### Tips for Success
-                - ✅ Be specific and detailed
-                - ✅ Include real-world examples
-                - ✅ Explain concepts thoroughly
-                - ✅ Practice regularly
-                - ✅ Review feedback carefully
-                
-                ### Supported Roles
-                - Software Engineering
-                - Data Science
-                - DevOps
-                - And more...
+**Tips for best results:**
+✅ Use Chrome or Edge for best camera/mic support
+✅ Allow camera & microphone when prompted
+✅ Speak clearly — pause before and after your answer
+✅ Use the text box as a fallback if voice fails
+✅ Complete all 10 questions for a full report
             """)
-    
-    # Get Started Button
+
     if st.session_state.user_profile:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🚀 START YOUR FIRST INTERVIEW", use_container_width=True):
-                st.session_state.interview_active = True
-                st.session_state.current_question = st.session_state.selector.select_next_question(
+        _, sc, _ = st.columns([1, 2, 1])
+        with sc:
+            if st.button("🚀 START YOUR INTERVIEW", use_container_width=True):
+                reset_interview()
+                first_q = st.session_state.selector.select_next_question(
                     st.session_state.user_profile, []
                 )
+                st.session_state.current_question    = first_q
+                st.session_state.interview_active    = True
+                st.session_state.interview_stage     = 'intro'
+                st.session_state.interview_start_time = datetime.now()
                 st.rerun()
     else:
-        st.info("👆 **Please complete your profile in the sidebar to begin your interview practice**")
+        st.info("👈 **Complete your profile in the sidebar to unlock the Start button.**")
 
-# =============================================================================
-# INTERVIEW ACTIVE SECTION
-# =============================================================================
+# ===========================================================================
+# ██  STAGE 1-3: ACTIVE INTERVIEW  ██
+# ===========================================================================
 if st.session_state.interview_active:
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message.get("feedback"):
-                with st.expander("📝 View Detailed Feedback", expanded=True):
-                    st.markdown(message["feedback"], unsafe_allow_html=True)
-    
-    # Show current question
-    if st.session_state.current_question:
-        q = st.session_state.current_question
-        
-        # Display question in professional box
-        st.markdown(f"""
-            <div class="question-box">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <span style="background: #667eea; color: white; padding: 0.25rem 1rem; border-radius: 20px; font-size: 0.8rem;">
-                        Question {len(st.session_state.question_history) + 1}/10
-                    </span>
-                    <span style="color: #64748B; font-size: 0.9rem;">
-                        Difficulty: <span class="badge badge-{get_difficulty_level(q)}">{get_difficulty_level(q).title()}</span>
-                    </span>
-                </div>
-                <div class="question-text">{q['question']}</div>
-                <div class="question-meta">
-                    <span>Topic: {q.get('topic', 'General').title()}</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Answer input
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            answer = st.text_area(
-                "Your Answer:",
-                height=150,
-                key=f"answer_{len(st.session_state.answer_history)}",
-                placeholder="Type your answer here... Be specific and provide examples when possible."
-            )
-        with col2:
-            st.write("")
-            st.write("")
-            if st.button("📤 SUBMIT ANSWER", use_container_width=True, type="primary"):
-                if answer:
-                    # Process answer
-                    with st.spinner("🤖 AI is analyzing your answer..."):
-                        # Add to messages
-                        st.session_state.messages.append({"role": "user", "content": answer})
-                        
-                        # Evaluate answer
-                        feedback = st.session_state.evaluator.evaluate_answer(
-                            q['id'], 
-                            answer
-                        )
-                        
-                        # Store in history
-                        answer_record = {
-                            "question_id": q['id'],
-                            "question": q['question'],
-                            "answer": answer,
-                            "score": feedback["score"],
-                            "topic": q.get("topic", "general"),
-                            "difficulty": get_difficulty_level(q),
-                            "feedback": feedback,
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        st.session_state.answer_history.append(answer_record)
-                        st.session_state.question_history.append(q['id'])
-                        
-                        # Update selector with performance
-                        st.session_state.selector.update_performance(
-                            q['id'],
-                            feedback["score"],
-                            q.get("topic", "general")
-                        )
-                        
-                        # Format and display feedback
-                        feedback_html = format_feedback(feedback)
-                        st.session_state.messages.append({
-                            "role": "assistant",
-                            "content": "📝 **AI Feedback:**",
-                            "feedback": feedback_html
-                        })
-                        
-                        # Check if interview should continue
-                        if len(st.session_state.answer_history) < 10:
-                            # Select next question
-                            next_q = st.session_state.selector.select_next_question(
-                                st.session_state.user_profile,
-                                st.session_state.answer_history
-                            )
-                            st.session_state.current_question = next_q
-                            st.success(f"✅ Great answer! Moving to question {len(st.session_state.answer_history) + 1}/10")
-                        else:
-                            # Interview complete
-                            st.session_state.interview_active = False
-                            st.session_state.interview_complete = True
-                            with st.spinner("🎯 Generating your comprehensive performance report..."):
-                                st.session_state.report = st.session_state.reporter.generate_report(
-                                    st.session_state.user_profile,
-                                    st.session_state.answer_history
-                                )
-                            st.balloons()
-                            st.success("🎉 Congratulations! You've completed the interview!")
-                        
-                        time.sleep(1)
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Please provide an answer before submitting!")
-        
-        # Voice input option
-        with st.expander("🎤 Voice Input (Optional)"):
-            st.write("Click the button and speak your answer naturally:")
-            if st.button("🎤 START RECORDING", key=f"voice_{len(st.session_state.answer_history)}"):
-                with st.spinner("🎤 Listening... Speak now!"):
-                    voice_text = record_audio()
-                    if voice_text:
-                        st.success(f"✅ Recognized: {voice_text}")
-                        # Set the text area value
-                        st.session_state[f"answer_{len(st.session_state.answer_history)}"] = voice_text
-                        st.rerun()
 
-# =============================================================================
-# INTERVIEW COMPLETE - PERFORMANCE REPORT
-# =============================================================================
-if st.session_state.interview_complete and st.session_state.report:
-    st.balloons()
-    
-    # Success Header
-    st.markdown("""
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                    padding: 2rem;
-                    border-radius: 15px;
-                    margin: 1rem 0 2rem;
-                    color: white;
-                    text-align: center;">
-            <h2 style="font-size: 2rem; margin-bottom: 0.5rem;">🎉 Interview Complete!</h2>
-            <p style="font-size: 1.1rem; opacity: 0.9;">Here's your comprehensive performance analysis</p>
+    profile = st.session_state.user_profile
+    cand_name = profile.get("name", "Candidate")
+    q     = st.session_state.current_question
+    stage = st.session_state.interview_stage
+    answered = len(st.session_state.answer_history)
+
+    # ── Meeting header bar ──
+    mic_icon = "🔇" if st.session_state.mic_muted else "🎤"
+    cam_icon = "📷" if st.session_state.cam_off   else "📹"
+    st.markdown(f"""
+        <div class="meet-header">
+            <div>
+                <span class="meet-title">
+                    <span class="status-dot dot-live"></span>
+                    AI Interview Session &mdash; {profile.get('target_role','')}
+                </span><br>
+                <span class="meet-meta">Candidate: {cand_name} &nbsp;|&nbsp;
+                    Q{answered + 1}/10 &nbsp;|&nbsp; &#9201; {get_elapsed_time()}
+                </span>
+            </div>
+            <div style="display:flex;gap:18px;font-size:1.3rem;">
+                <span>{mic_icon}</span>
+                <span>{cam_icon}</span>
+                <span style="color:#ea4335;">&#9210;</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── FIX 3: Cache TTS so it plays only ONCE per greeting (not on every rerun) ──
+    if stage == 'intro' and not st.session_state.intro_spoken:
+        greeting = (
+            f"Hello {cand_name}, welcome to your AI interview session for the role of "
+            f"{profile.get('target_role', 'Software Engineer')}. "
+            "I will be asking you a series of technical questions. "
+            "Please answer clearly and in detail. Let us begin!"
+        )
+        # Cache audio bytes so it survives reruns without re-requesting Google TTS
+        if 'cached_tts_greeting' not in st.session_state:
+            st.session_state.cached_tts_greeting = text_to_speech_autoplay(greeting)
+        st.markdown(st.session_state.cached_tts_greeting, unsafe_allow_html=True)
+        st.session_state.intro_spoken    = True
+        st.session_state.interview_stage = 'questions'
+
+    # ── Camera panel: pure browser-side getUserMedia() — no server relay needed ──
+    # This is exactly how Google Meet shows your self-view: the browser accesses
+    # the camera locally and pipes it into a <video> element. No WebRTC STUN/TURN
+    # server is involved for self-preview.
+
+    cam_hidden = "true" if st.session_state.get('cam_off', False) else "false"
+
+    camera_html = f"""
+    <div style="
+        background:#1a1b1e;
+        border:2px solid #3c4043;
+        border-radius:14px;
+        overflow:hidden;
+        font-family:'Inter',sans-serif;
+    ">
+        <!-- Header bar -->
+        <div style="
+            padding:10px 18px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            border-bottom:1px solid #2d2f31;
+        ">
+            <span style="color:#9aa0a6;font-size:0.85rem;font-weight:500;">
+                &#128249;&nbsp; Live Camera &mdash;
+                <strong style="color:#e8eaed;">{cand_name}</strong>
+            </span>
+            <span id="liveTag" style="
+                background:rgba(234,67,53,0.18);color:#ea4335;
+                font-size:0.7rem;padding:3px 10px;border-radius:20px;
+                font-weight:600;letter-spacing:0.4px;
+            ">&#9210; LIVE</span>
         </div>
-    """, unsafe_allow_html=True)
-    
+
+        <!-- Video element -->
+        <div id="videoWrapper" style="position:relative;background:#000;text-align:center;">
+            <video id="localVideo"
+                autoplay playsinline muted
+                style="
+                    width:100%;
+                    height:480px;
+                    object-fit:contain; /* Never crop the video, show the full frame */
+                    display:block;
+                    transform:scaleX(-1);  /* Mirror like every selfie camera */
+                "
+            ></video>
+
+            <!-- Overlay shown when camera is off -->
+            <div id="camOff" style="
+                display:none;
+                position:absolute;top:0;left:0;right:0;bottom:0;
+                background:#0f172a;
+                align-items:center;justify-content:center;
+                flex-direction:column;
+                color:#475569;
+                min-height:300px;
+            ">
+                <div style="font-size:2.8rem;">&#128247;</div>
+                <p style="margin:10px 0 0;font-size:0.9rem;">Camera is off</p>
+                <p style="font-size:0.75rem;opacity:0.55;margin-top:4px;">
+                    Click <strong style="color:#9aa0a6;">Cam On</strong> below
+                </p>
+            </div>
+
+            <!-- Permission error overlay -->
+            <div id="camError" style="
+                display:none;
+                position:absolute;top:0;left:0;right:0;bottom:0;
+                background:#1a1b1e;
+                align-items:center;justify-content:center;
+                flex-direction:column;
+                color:#64748b;
+                min-height:300px;
+            ">
+                <div style="font-size:2.8rem;">&#128247;</div>
+                <p style="margin:10px 0 0;font-size:0.9rem;color:#f87171;">
+                    Camera permission denied
+                </p>
+                <p style="font-size:0.75rem;opacity:0.7;margin-top:6px;text-align:center;max-width:280px;">
+                    Click the camera icon in your browser address bar and allow camera access,
+                    then refresh the page.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {{
+        var video      = document.getElementById('localVideo');
+        var camOffDiv  = document.getElementById('camOff');
+        var camErrDiv  = document.getElementById('camError');
+        var liveTag    = document.getElementById('liveTag');
+        var currentStream = null;
+        var isCamOff = {cam_hidden};   // Python injects 'true' or 'false'
+
+        function startCamera() {{
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
+                camErrDiv.style.display = 'flex';
+                return;
+            }}
+            navigator.mediaDevices.getUserMedia({{ video: true, audio: false }})
+                .then(function(stream) {{
+                    currentStream = stream;
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    camOffDiv.style.display  = 'none';
+                    camErrDiv.style.display  = 'none';
+                    liveTag.style.display    = 'inline';
+                }})
+                .catch(function(err) {{
+                    console.warn('Camera error:', err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {{
+                        camErrDiv.style.display = 'flex';
+                    }} else if (err.name === 'NotFoundError') {{
+                        camErrDiv.innerHTML = '<div style="font-size:2.5rem;">&#128247;</div><p style="margin:10px 0 0;color:#f87171;">No camera detected</p>';
+                        camErrDiv.style.display = 'flex';
+                    }} else {{
+                        camErrDiv.style.display = 'flex';
+                    }}
+                }});
+        }}
+
+        function stopCamera() {{
+            if (currentStream) {{
+                currentStream.getTracks().forEach(function(t) {{ t.stop(); }});
+                currentStream = null;
+            }}
+            video.srcObject = null;
+            video.style.display    = 'none';
+            camOffDiv.style.display = 'flex';
+            liveTag.style.display  = 'none';
+        }}
+
+        // Kick off based on current Streamlit cam_off state
+        if (isCamOff) {{
+            stopCamera();
+        }} else {{
+            startCamera();
+        }}
+    }})();
+    </script>
+    """
+
+    components.html(camera_html, height=580, scrolling=False)
+
+    # ── Meeting control bar ──
+    st.markdown("")
+    ctrl1, ctrl2, ctrl3, _ = st.columns([1, 1, 1, 3])
+    with ctrl1:
+        mic_lbl = "&#128263; Unmute" if st.session_state.mic_muted else "&#127908; Mute"
+        if st.button("🔇 Unmute" if st.session_state.mic_muted else "🎙️ Mute", key="mute_btn"):
+            st.session_state.mic_muted = not st.session_state.mic_muted
+            st.rerun()
+    with ctrl2:
+        if st.button("📷 Cam On" if st.session_state.cam_off else "📷 Cam Off", key="cam_btn"):
+            st.session_state.cam_off = not st.session_state.cam_off
+            st.rerun()
+    with ctrl3:
+        if st.button("🔴 End Interview", key="end_btn"):
+            with st.spinner("Generating your performance report…"):
+                st.session_state.report = st.session_state.reporter.generate_report(
+                    profile, st.session_state.answer_history
+                )
+            st.session_state.interview_active   = False
+            st.session_state.interview_complete = True
+            st.session_state.interview_stage    = 'report'
+            st.rerun()
+
+    st.markdown("---")
+
+    # ── WRAPUP STAGE ──
+    if stage == 'wrapup':
+        closing = (
+            f"Thank you, {cand_name}, for completing the interview. "
+            "I will now evaluate all your responses and generate your performance report."
+        )
+        st.markdown(text_to_speech_autoplay(closing), unsafe_allow_html=True)
+        st.markdown("""
+            <div style="background:linear-gradient(135deg,#065f46,#047857);
+                        color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
+                <h3 style="margin:0 0 0.5rem;">🎉 All Questions Completed!</h3>
+                <p style="margin:0;opacity:0.9;">Generating your comprehensive performance report…</p>
+            </div>""", unsafe_allow_html=True)
+
+        with st.spinner("🤖 Analysing all your answers…"):
+            time.sleep(2)   # dramatic pause for TTS to finish
+            st.session_state.report = st.session_state.reporter.generate_report(
+                profile, st.session_state.answer_history
+            )
+        st.session_state.interview_active   = False
+        st.session_state.interview_complete = True
+        st.session_state.interview_stage    = 'report'
+        st.rerun()
+
+    # ── QUESTIONS STAGE ──
+    elif stage == 'questions' and q:
+
+        # FIX 3 (questions): Cache TTS audio per question ID in session_state.
+        # This ensures the AI voice plays exactly once per new question and is
+        # NEVER re-requested from Google's TTS server on subsequent reruns
+        # (which was causing the audio to restart / break mid-sentence).
+        if st.session_state.last_played_q_id != q['id']:
+            tts_cache_key = f"tts_q_{q['id']}"
+            if tts_cache_key not in st.session_state:
+                # Generate audio only the first time this question appears
+                st.session_state[tts_cache_key] = text_to_speech_autoplay(q['question'])
+            # Play from cache — never re-generates on reruns
+            st.markdown(st.session_state[tts_cache_key], unsafe_allow_html=True)
+            st.session_state.last_played_q_id = q['id']
+
+        # ── Question card ──
+        diff_level  = get_difficulty_level(q)
+        q_num_label = f"Question {answered + 1} of 10"
+        st.markdown(f"""
+            <div class="q-card">
+                <div class="q-number">{q_num_label} &nbsp;·&nbsp;
+                    <span class="badge badge-{diff_level}">{diff_level.title()}</span>
+                </div>
+                <div class="q-text">{q['question']}</div>
+                <div class="q-topic">📌 Topic: {q.get('topic','General').title()}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # Progress bar
+        st.progress(answered / 10)
+
+        # ── Answer section ──
+        st.markdown("#### 🎤 Your Answer")
+
+        # Mic-muted warning
+        if st.session_state.mic_muted:
+            st.warning("🔇 Your microphone is muted. Click **Unmute** in the controls above, then record.")
+
+        # Voice recording
+        voice_answer = None
+        if not st.session_state.mic_muted:
+            if AUDIO_RECORDER_AVAILABLE:
+                st.markdown(
+                    '<p style="color:#475569;font-size:0.9rem;">'
+                    '🔴 Click the button to record · speak your answer · click again to stop</p>',
+                    unsafe_allow_html=True
+                )
+                audio_bytes = audio_recorder(
+                    pause_threshold=3.0,
+                    sample_rate=16_000,
+                    key=f"audio_{answered}"
+                )
+                if audio_bytes:
+                    with st.spinner("🔄 Transcribing your answer…"):
+                        voice_answer = speech_to_text(audio_bytes)
+                    if voice_answer:
+                        st.markdown(f"""
+                            <div style="background:#f0fdf4;border:1px solid #86efac;
+                                        border-radius:10px;padding:0.9rem;margin:0.5rem 0;">
+                                <div style="color:#166534;font-size:0.8rem;font-weight:600;">
+                                    ✅ Transcribed answer:
+                                </div>
+                                <div style="color:#1e293b;margin-top:4px;">{voice_answer}</div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.warning("⚠️ Could not transcribe. Please speak clearly or use the text box below.")
+            else:
+                st.info("Install `audio-recorder-streamlit` to enable voice answers.")
+
+        # ── Text fallback ──
+        st.markdown(
+            '<p style="color:#94a3b8;font-size:0.84rem;">Or type your answer manually:</p>',
+            unsafe_allow_html=True
+        )
+        col_txt, col_btn = st.columns([5, 1])
+        with col_txt:
+            typed_answer = st.text_area(
+                "Type your answer:",
+                height=130,
+                key=f"typed_{answered}",
+                placeholder="Type a detailed answer here… include examples where possible.",
+                label_visibility="collapsed"
+            )
+        with col_btn:
+            st.write("")
+            st.write("")
+            submit_typed = st.button("📤 Submit", key=f"submit_{answered}",
+                                     use_container_width=True, type="primary")
+
+        # ── Submission logic — voice takes priority, typed is fallback ──
+        final_answer = None
+        if voice_answer:
+            final_answer = voice_answer
+        elif submit_typed and typed_answer.strip():
+            final_answer = typed_answer.strip()
+        elif submit_typed and not typed_answer.strip():
+            st.warning("⚠️ Please type an answer or record your voice before submitting.")
+
+        if final_answer:
+            with st.spinner("📝 Saving your answer…"):
+                process_answer(final_answer)
+                time.sleep(0.5)
+            st.rerun()
+
+    # ── Answer history accordion (collapsed by default — no spoilers) ──
+    if st.session_state.answer_history:
+        with st.expander(f"📋 Answers so far ({len(st.session_state.answer_history)} recorded)", expanded=False):
+            for i, rec in enumerate(st.session_state.answer_history, 1):
+                st.markdown(f"**Q{i}:** {rec['question']}")
+                st.markdown(f"*Your answer:* {rec['answer'][:200]}{'…' if len(rec['answer'])>200 else ''}")
+                st.markdown("---")
+
+# ===========================================================================
+# ██  STAGE 4: PERFORMANCE REPORT  ██
+# ===========================================================================
+if st.session_state.interview_complete and st.session_state.report:
+
     report = st.session_state.report
-    
-    # Summary Cards
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        score = report['summary']['overall_score']
-        score_color = "#10b981" if score >= 7 else "#f59e0b" if score >= 5 else "#ef4444"
-        st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size: 2rem; color: {score_color};">{score}/10</div>
-                <div class="metric-label">Overall Score</div>
-                <div class="badge badge-{report['summary']['performance_level']}">{report['summary']['performance_level'].title()}</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size: 2rem; color: #667eea;">{report['summary']['total_questions']}</div>
-                <div class="metric-label">Questions Answered</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size: 2rem; color: #667eea;">{report['summary']['completion_rate']}%</div>
-                <div class="metric-label">Completion Rate</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        strengths_count = len(report['detailed_analysis']['strongest_topics'])
-        st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size: 2rem; color: #667eea;">{strengths_count}</div>
-                <div class="metric-label">Strength Areas</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Create tabs for detailed analysis
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Performance Summary", "📈 Detailed Analytics", "📚 Learning Path", "🎯 Recommendations"])
-    
+
+    st.balloons()
+    st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#065f46 0%,#047857 100%);
+                    padding:2rem; border-radius:16px; color:white; text-align:center; margin:1rem 0 2rem;">
+            <h2 style="font-size:2rem;margin-bottom:0.4rem;">🎉 Interview Complete!</h2>
+            <p style="opacity:0.9;margin:0;">Here is your comprehensive performance analysis, {report['user_profile'].get('name','Candidate')}.</p>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Summary metric cards ──
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    score = report['summary']['overall_score']
+    score_color = "#10b981" if score >= 7 else "#f59e0b" if score >= 5 else "#ef4444"
+    perf_level  = report['summary']['performance_level']
+
+    for col, icon, val, label in [
+        (mc1, "⭐", f"<span style='color:{score_color}'>{score}/10</span>", f"Overall · {perf_level.title()}"),
+        (mc2, "📝", report['summary']['total_questions'],  "Questions Answered"),
+        (mc3, "✅", f"{report['summary']['completion_rate']}%", "Completion Rate"),
+        (mc4, "💪", len(report['detailed_analysis']['strongest_topics']), "Strength Areas"),
+    ]:
+        with col:
+            col.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size:1.5rem;">{icon}</div>
+                    <div class="metric-value">{val}</div>
+                    <div class="metric-label">{label}</div>
+                </div>""", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # ── Tabs ──
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Summary", "📈 Analytics", "📋 Question Review",
+        "📚 Learning Path", "🎯 Recommendations"
+    ])
+
+    # ── Tab 1: Topic Summary ──
     with tab1:
         st.subheader("📊 Topic-wise Performance")
-        
-        # Create DataFrame for topic performance
-        topic_data = []
-        for topic, data in report['detailed_analysis']['by_topic'].items():
-            topic_data.append({
-                "Topic": topic.title(),
-                "Score": data['average_score'],
-                "Questions": data['questions_attempted'],
-                "Level": data['level'].title()
-            })
-        
+        topic_data = [
+            {"Topic": t.title(), "Score": d['average_score'],
+             "Questions": d['questions_attempted'], "Level": d['level'].title()}
+            for t, d in report['detailed_analysis']['by_topic'].items()
+        ]
         if topic_data:
-            df = pd.DataFrame(topic_data)
-            
-            # Bar chart
-            fig = px.bar(
-                df,
-                x='Topic',
-                y='Score',
-                color='Score',
-                color_continuous_scale=['#ef4444', '#f59e0b', '#10b981'],
-                title="Performance by Topic",
-                text='Score'
-            )
-            fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-            fig.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                yaxis_range=[0, 10]
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Topic details table
-            st.subheader("📋 Topic Details")
-            for topic in topic_data:
-                with st.expander(f"📌 {topic['Topic']}"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Average Score", f"{topic['Score']}/10")
-                    with col2:
-                        st.metric("Questions Attempted", topic['Questions'])
-    
+            df_topics = pd.DataFrame(topic_data)
+            fig_bar = px.bar(df_topics, x='Topic', y='Score',
+                             color='Score',
+                             color_continuous_scale=['#ef4444','#f59e0b','#10b981'],
+                             title="Average Score per Topic", text='Score')
+            fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            fig_bar.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                                   yaxis_range=[0, 10])
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    # ── Tab 2: Progress & Difficulty ──
     with tab2:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📈 Progress Over Time")
-            progress_data = report['detailed_analysis']['progress_over_time']
-            if progress_data:
-                df_progress = pd.DataFrame(progress_data)
-                fig_line = px.line(
-                    df_progress,
-                    x='question_number',
-                    y='score',
-                    title="Score Progression",
-                    labels={'question_number': 'Question #', 'score': 'Score'},
-                    markers=True
-                )
-                fig_line.update_traces(line_color='#667eea', line_width=3)
-                fig_line.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    yaxis_range=[0, 10]
-                )
+        col_l, col_r = st.columns(2)
+        with col_l:
+            st.subheader("📈 Score Progression")
+            prog_data = report['detailed_analysis']['progress_over_time']
+            if prog_data:
+                df_prog = pd.DataFrame(prog_data)
+                fig_line = px.line(df_prog, x='question_number', y='score',
+                                   title="Score per Question",
+                                   labels={'question_number':'Question #','score':'Score'},
+                                   markers=True)
+                fig_line.update_traces(line_color='#667eea', line_width=3, marker_size=8)
+                fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)',
+                                        paper_bgcolor='rgba(0,0,0,0)', yaxis_range=[0,10])
                 st.plotly_chart(fig_line, use_container_width=True)
-        
-        with col2:
-            st.subheader("📊 Difficulty Analysis")
+        with col_r:
+            st.subheader("📊 Difficulty Breakdown")
             diff_data = report['detailed_analysis']['by_difficulty']
-            diff_df = pd.DataFrame([
-                {
-                    "Difficulty": d.title(),
-                    "Score": data['average_score'],
-                    "Questions": data['questions_attempted']
-                }
-                for d, data in diff_data.items()
+            df_diff = pd.DataFrame([
+                {"Difficulty": d.title(), "Score": v['average_score'], "Qs": v['questions_attempted']}
+                for d, v in diff_data.items()
             ])
-            
-            if not diff_df.empty:
-                fig_diff = px.bar(
-                    diff_df,
-                    x='Difficulty',
-                    y='Score',
-                    color='Score',
-                    color_continuous_scale=['#ef4444', '#f59e0b', '#10b981'],
-                    title="Performance by Difficulty Level",
-                    text='Score'
-                )
-                fig_diff.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-                fig_diff.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    yaxis_range=[0, 10]
-                )
-                st.plotly_chart(fig_diff, use_container_width=True)
-        
-        # Strongest and Weakest Topics
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("✅ Your Strengths")
-            strengths = report['detailed_analysis']['strongest_topics']
-            if strengths:
-                for s in strengths:
-                    st.markdown(f"""
-                        <div style="background: #d1fae5; padding: 1rem; border-radius: 10px; margin: 0.5rem 0;">
-                            <strong>{s['topic'].title()}</strong>: {s['score']}/10
-                            <br><small class="badge badge-{s['level']}">{s['level'].title()}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("Complete more questions to identify strengths")
-        
-        with col2:
-            st.subheader("🔧 Areas for Improvement")
-            weaknesses = report['detailed_analysis']['weakest_topics']
-            if weaknesses:
-                for w in weaknesses:
-                    st.markdown(f"""
-                        <div style="background: #fee2e2; padding: 1rem; border-radius: 10px; margin: 0.5rem 0;">
-                            <strong>{w['topic'].title()}</strong>: {w['score']}/10
-                            <br><small class="badge badge-{w['level']}">{w['level'].title()}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("Keep practicing to identify improvement areas")
-    
+            fig_diff = px.bar(df_diff, x='Difficulty', y='Score',
+                              color='Score',
+                              color_continuous_scale=['#ef4444','#f59e0b','#10b981'],
+                              title="Performance by Difficulty", text='Score')
+            fig_diff.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            fig_diff.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                                    yaxis_range=[0,10])
+            st.plotly_chart(fig_diff, use_container_width=True)
+
+        col_s, col_w = st.columns(2)
+        with col_s:
+            st.subheader("✅ Strengths")
+            for s in report['detailed_analysis']['strongest_topics']:
+                st.markdown(f"""
+                    <div style="background:#d1fae5;padding:0.9rem;border-radius:10px;margin:0.4rem 0;">
+                        <strong>{s['topic'].title()}</strong>: {s['score']}/10
+                        <br><small class="badge badge-{s['level']}">{s['level'].title()}</small>
+                    </div>""", unsafe_allow_html=True)
+        with col_w:
+            st.subheader("🔧 Areas to Improve")
+            for w in report['detailed_analysis']['weakest_topics']:
+                st.markdown(f"""
+                    <div style="background:#fee2e2;padding:0.9rem;border-radius:10px;margin:0.4rem 0;">
+                        <strong>{w['topic'].title()}</strong>: {w['score']}/10
+                        <br><small class="badge badge-{w['level']}">{w['level'].title()}</small>
+                    </div>""", unsafe_allow_html=True)
+
+    # ── Tab 3: Per-question review (full feedback now shown) ──
     with tab3:
-        st.subheader("📚 Your Personalized Learning Path")
-        
+        st.subheader("📋 Detailed Question-by-Question Review")
+        if not st.session_state.answer_history:
+            st.info("No answers were recorded.")
+        for i, rec in enumerate(st.session_state.answer_history, 1):
+            sc = rec['score']
+            sc_cls = "score-high" if sc >= 7 else "score-medium" if sc >= 5 else "score-low"
+            with st.expander(f"Q{i}: {rec['question'][:80]}…  —  Score: {sc}/10", expanded=False):
+                st.markdown(f"**Question:** {rec['question']}")
+                st.markdown(f"**Your Answer:** {rec['answer']}")
+                st.markdown(f"**Score:** <span class='{sc_cls}'>{sc}/10</span>", unsafe_allow_html=True)
+                if rec.get('feedback'):
+                    st.markdown(format_feedback(rec['feedback']), unsafe_allow_html=True)
+
+    # ── Tab 4: Learning path ──
+    with tab4:
+        st.subheader("📚 Personalised Learning Path")
         for phase in report['learning_path']:
-            priority_color = {
-                "high": "#ef4444",
-                "medium": "#f59e0b",
-                "low": "#10b981"
-            }.get(phase['priority'], "#667eea")
-            
+            p_color = {"high":"#ef4444","medium":"#f59e0b","low":"#10b981"}.get(phase['priority'],"#667eea")
             st.markdown(f"""
-                <div style="background: white; padding: 1.5rem; border-radius: 15px; margin: 1rem 0;
-                            border-left: 4px solid {priority_color}; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h4 style="margin: 0;">🔹 {phase['phase'].title()} Phase</h4>
-                        <span style="background: {priority_color}20; color: {priority_color}; 
-                                   padding: 0.25rem 1rem; border-radius: 20px; font-size: 0.8rem;">
+                <div style="background:white;padding:1.25rem;border-radius:14px;margin:0.8rem 0;
+                            border-left:5px solid {p_color};box-shadow:0 3px 8px rgba(0,0,0,0.06);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <strong>🔹 {phase['phase'].title()} Phase</strong>
+                        <span style="background:{p_color}20;color:{p_color};padding:2px 12px;
+                                     border-radius:20px;font-size:0.78rem;">
                             {phase['priority'].title()} Priority
                         </span>
                     </div>
-                    <p style="margin: 1rem 0 0.5rem;"><strong>Focus:</strong> {phase['focus'].title()}</p>
-                    <p><strong>Goal:</strong> {phase['goal']}</p>
-                    <p><strong>Estimated Time:</strong> {phase['estimated_time']}</p>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        # Resources
-        st.subheader("📖 Recommended Learning Resources")
-        for resource in report.get('resources', []):
+                    <p style="margin:0.6rem 0 0.2rem;"><strong>Focus:</strong> {phase['focus'].title()}</p>
+                    <p style="margin:0.2rem 0;"><strong>Goal:</strong> {phase['goal']}</p>
+                    <p style="margin:0.2rem 0;color:#718096;font-size:0.87rem;">
+                        ⏱ Est. time: {phase['estimated_time']}
+                    </p>
+                </div>""", unsafe_allow_html=True)
+
+        st.subheader("📖 Recommended Resources")
+        for r in report.get('resources', []):
             st.markdown(f"""
-                <div style="background: #f8fafc; padding: 1rem; border-radius: 10px; margin: 0.5rem 0;">
-                    <a href="{resource['url']}" target="_blank" style="text-decoration: none; color: #667eea; font-weight: 500;">
-                        📘 {resource['name']}
+                <div style="background:#f8fafc;padding:0.9rem;border-radius:10px;margin:0.4rem 0;">
+                    <a href="{r['url']}" target="_blank"
+                       style="text-decoration:none;color:#667eea;font-weight:500;">
+                        📘 {r['name']}
                     </a>
-                    <span style="float: right; color: #666; font-size: 0.85rem;">{resource['type'].title()}</span>
-                </div>
-            """, unsafe_allow_html=True)
-    
-    with tab4:
-        st.subheader("💡 Personalized Recommendations")
-        
-        for rec in report['recommendations']:
-            st.info(rec)
-        
-        st.subheader("⏭️ Next Steps")
+                    <span style="float:right;color:#94a3b8;font-size:0.82rem;">{r['type'].title()}</span>
+                </div>""", unsafe_allow_html=True)
+
+    # ── Tab 5: Recommendations ──
+    with tab5:
+        st.subheader("💡 Personalised Recommendations")
+        for rec_text in report['recommendations']:
+            st.info(rec_text)
+
+        st.subheader("⏭️ Immediate Next Steps")
         for step in report['next_steps']:
             st.success(step)
-        
-        # Download Report
+
         st.markdown("---")
-        st.subheader("📥 Download Your Report")
-        
+        st.subheader("📥 Download Report")
         report_json = json.dumps(report, indent=2, default=str)
         st.download_button(
-            label="📥 Download Full Performance Report (JSON)",
+            label="📥 Download Full Report (JSON)",
             data=report_json,
             file_name=f"interview_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json",
             use_container_width=True
         )
-        
-        # Share options
-        st.markdown("---")
-        st.subheader("📤 Share Your Progress")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.button("📧 Email Report", use_container_width=True)
-        with col2:
-            st.button("📱 Share on LinkedIn", use_container_width=True)
-        with col3:
-            st.button("📄 Print Report", use_container_width=True)
 
-# =============================================================================
+# ===========================================================================
 # FOOTER
-# =============================================================================
+# ===========================================================================
 st.markdown("---")
 st.markdown("""
     <div class="footer">
-        <p>🎯 AI Interview Coach - Professional Edition v2.0</p>
-        <p style="font-size: 0.8rem;">Powered by Advanced AI Algorithms | Built with Streamlit</p>
-        <p style="font-size: 0.75rem;">© 2024 All Rights Reserved</p>
-    </div>
-""", unsafe_allow_html=True)
+        <p>🎯 AI Interview Coach — Professional Edition v3.0</p>
+        <p style="font-size:0.78rem;">
+            Powered by Best-First Search · Forward-Chaining Evaluation · Streamlit WebRTC<br>
+            Built with ❤️ for serious interview preparation
+        </p>
+    </div>""", unsafe_allow_html=True)
