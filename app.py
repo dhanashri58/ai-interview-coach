@@ -1112,7 +1112,9 @@ if st.session_state.interview_complete and st.session_state.report:
                 if not raw_ans or raw_ans.lower() in ["none", "null", "skipped"]:
                     ans_html = "<div style='color:#94a3b8; font-style:italic; padding:0.5rem 0;'>No response detected for this question.</div>"
                 else:
-                    ans_html = f"<div style='color:#f8fafc; line-height:1.6; font-size:1.05rem;'>{raw_ans}</div>"
+                    # Replace newlines with <br> so Streamlit markdown parser doesn't break the HTML divs
+                    safe_ans = raw_ans.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+                    ans_html = f"<div style='color:#f8fafc; line-height:1.6; font-size:1.05rem;'>{safe_ans}</div>"
 
                 fb = rec.get('feedback', {})
                 if not fb:
@@ -1170,7 +1172,7 @@ if st.session_state.interview_complete and st.session_state.report:
     <!-- Question -->
     <div style="margin-bottom:1.8rem;">
         <div style="color:#64748b; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Question</div>
-        <div style="color:#f8fafc; font-size:1.15rem; font-weight:600; line-height:1.5;">{rec['question']}</div>
+        <div style="color:#f8fafc; font-size:1.15rem; font-weight:600; line-height:1.5;">{str(rec.get('question', '')).replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')}</div>
     </div>
 
     <!-- Candidate Answer -->
