@@ -1122,21 +1122,37 @@ if st.session_state.interview_complete and st.session_state.report:
                 weaknesses_html = "".join([f"<li style='margin-bottom:6px;'>{w}</li>" for w in fb.get('weaknesses', [])])
                 suggestions_html = "".join([f"<li style='margin-bottom:6px;'>{s}</li>" for s in fb.get('suggestions', [])])
                 
-                ideal_ans = fb.get('ideal_answer', "Not provided.")
-                # First, extract code blocks
-                code_blocks = []
-                def replacer(match):
-                    code_blocks.append(match.group(2))
-                    idx = len(code_blocks) - 1
-                    lang_class = f' class="{match.group(1)}"' if match.group(1) else ""
-                    return f'<pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code{lang_class}>__CODEBLOCK_{idx}__</code></pre>'
-                
-                ideal_ans_html = re.sub(r'```(\w+)?\n(.*?)\n```', replacer, ideal_ans, flags=re.DOTALL)
-                # Next, replace newlines in the normal text with <br>
-                ideal_ans_html = ideal_ans_html.replace('\n', '<br>')
-                # Finally, restore the code blocks with their original newlines
-                for idx, code_content in enumerate(code_blocks):
-                    ideal_ans_html = ideal_ans_html.replace(f'__CODEBLOCK_{idx}__', code_content.replace('<', '&lt;').replace('>', '&gt;'))
+                ideal_ans_raw = fb.get('ideal_answer', "Not provided.")
+                if isinstance(ideal_ans_raw, dict):
+                    points_html = "".join([f"<li style='margin-bottom:6px;'>{p}</li>" for p in ideal_ans_raw.get('key_points', [])])
+                    example_text = ideal_ans_raw.get('example', '')
+                    
+                    if example_text:
+                        # Clean code block backticks if they exist
+                        example_text = re.sub(r'^```[\w]*\n?', '', example_text)
+                        example_text = re.sub(r'\n?```$', '', example_text)
+                        
+                        example_html = f'<div style="margin-top:0.8rem; font-weight:700; color:#c084fc; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">Example:</div><pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code style="color:#a5f3fc; font-family:\'Courier New\', monospace;">{example_text.replace("<", "&lt;").replace(">", "&gt;")}</code></pre>'
+                    else:
+                        example_html = ""
+                        
+                    ideal_ans_html = f"<div style='margin-bottom:0.5rem; font-weight:700; color:#c084fc; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;'>Key Points:</div><ul style='margin:0 0 1rem 0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;'>{points_html}</ul>{example_html}"
+                else:
+                    ideal_ans = str(ideal_ans_raw)
+                    # First, extract code blocks
+                    code_blocks = []
+                    def replacer(match):
+                        code_blocks.append(match.group(2))
+                        idx = len(code_blocks) - 1
+                        lang_class = f' class="{match.group(1)}"' if match.group(1) else ""
+                        return f'<pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code{lang_class}>__CODEBLOCK_{idx}__</code></pre>'
+                    
+                    ideal_ans_html = re.sub(r'```(\w+)?\n(.*?)\n```', replacer, ideal_ans, flags=re.DOTALL)
+                    # Next, replace newlines in the normal text with <br>
+                    ideal_ans_html = ideal_ans_html.replace('\n', '<br>')
+                    # Finally, restore the code blocks with their original newlines
+                    for idx, code_content in enumerate(code_blocks):
+                        ideal_ans_html = ideal_ans_html.replace(f'__CODEBLOCK_{idx}__', code_content.replace('<', '&lt;').replace('>', '&gt;'))
 
                 # Note: No indentation used in the f-string below so Streamlit's Markdown parser 
                 # doesn't mistakenly wrap the HTML in a <pre> block (which caused the raw HTML bug!)
