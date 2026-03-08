@@ -451,13 +451,15 @@ Every available question runs through this formula and gets a score between 0.0 
 - `relevance`: Does this question's topic match your job? (Data Scientist + SQL = High relevance).
 - `difficulty_match`: Are you an 'entry' level looking at a 'beginner' question? (Match = 1.0).
 - `novelty`: Have we asked this recently? If yes, penalize it so we don't repeat.
-- `weakness_focus`: Did you get a low score on Python previously? If so, give Python questions a bonus multiplier so you are forced to practice your weaknesses!
+- `weakness_focus`: Did you get a low score on Python previously? If so, give Python questions a bonus multiplier so you are forced to practice your weaknesses! (Note: The selector looks backward through `answer_history` and finds the *most recent* score for each topic. `weakness_focus` is calculated as: `1.0 - (latest_score_for_this_topic / 10.0)`. So if your latest Python score is 2/10 → weakness_focus = 0.8. If your latest Python score is 9/10 → weakness_focus = 0.1. This means the heuristic reacts instantly after every single answer!)
 
 **Real Example Walkthrough:**
 Suppose Alice is a Junior Dev. She answers Q1 (Python Beginner) and gets a 2/10 score. The system needs to pick the next question. It evaluates the remaining pool:
 - Q2 (Python Beginner): High relevance, High difficulty match, High weakness focus (because she just failed Python). **Score: 0.95**
 - Q102 (SQL Advanced): Low relevance, low difficulty match. **Score: 0.21**
 - The system automatically selects Q2 to help her practice what she just failed. Yes, the difficulty dynamically changes based on your profile and past answers via this heuristic.
+
+*Note: The system also has a `get_predicted_questions()` method that runs the heuristic scoring on all remaining questions and returns the top 3 candidates WITH their float scores, but does NOT remove them from the queue. It is a "peek" operation used only for the visualizer panel.*
 
 
 
@@ -592,6 +594,26 @@ Here is the exact lifecycle of your interview in the application:
 
 
 
+
+## 8.5 🛤️ Question Path Visualizer Panel
+This panel exists to make the invisible AI decision-making visible directly on your screen — like showing the GPS route while driving instead of just arriving at the final destination. 
+
+**The Three-Box Visual Timeline:**
+- **LEFT box:** The previous question that was just asked, along with the score you got on it (greyed out, done).
+- **CENTER box:** The current question being asked right now (highlighted, active).
+- **RIGHT box:** The "predicted next question" — what the AI is currently planning to ask you based on your performance so far (shown as a preview, slightly faded). 
+
+The RIGHT box updates live the moment you submit an answer. If you bombed your Python question, a Python question will appear there. If you aced it, a different topic or harder question will appear.
+
+**"🧠 Internal AI Logic" Dropdown:**
+Underneath the timeline is a collapsible dropdown that shows the top 3 candidate questions the AI is currently considering, along with their raw heuristic float scores:
+  1. "What are Python decorators?" — 0.91 (weakness_focus active)
+  2. "Explain SQL JOINs"           — 0.74
+  3. "What is recursion?"          — 0.61
+
+Each float score tells you how strongly the AI wants to pick that question. `0.0` means the AI has no interest in this question right now, while `1.0` means the AI considers this the perfect next question based on relevance, novelty, difficulty, and weakness focus.
+
+*Note: This panel is for transparency and demonstration only — the user cannot manually override the AI's choice. We're just lifting the hood so you can watch the engine running!*
 
 ## 9. ✅ Answer Evaluation — How Does The App Score Your Answer?
 This app does NOT use ChatGPT. It is entirely rules-based, relying on **Forward Chaining**.
@@ -817,7 +839,27 @@ Here is how data physically moves through the Python files during a session:
        (returns score + feedback) <--------┘
        │
        ▼
- [Score stored in session_state.answer_history] ---> loops 10 times
+ [Score stored in session_state.answer_history]
+       │
+       ▼
+ [question_selector._calculate_weakness_focus()]
+   → scans answer_history for LATEST score per topic
+   → computes weakness_focus = 1.0 - (latest_score / 10)
+       │
+       ▼
+ [Best-First Search scores ALL remaining questions]
+   → returns top 1 as next question
+   → returns top 3 as predicted candidates (peek only)
+       │
+       ▼
+ [Question Path Visualizer Panel updates in UI]
+   → LEFT:   previous question + score
+   → CENTER: current question
+   → RIGHT:  top 1 predicted next question
+   → DROPDOWN: top 3 with heuristic float scores
+       │
+       ▼
+ (Loops 10 times)
        │
        ▼
  [Loop Done] ---> array of 10 scores sent to performance_report.py
@@ -942,6 +984,9 @@ A quick-reference for the technical jargon used throughout this document.
 - **Orchestrator:** The main script (like app.py) that acts as the boss, commanding all other smaller helper files when to do their jobs.
 - **Dictionary (Dict):** A data structure in Python that maps a 'key' (like 'name') to a 'value' (like 'Alice').
 - **Hardcoded:** Data that is written directly inside the python code files rather than pulled dynamically from an external SQL database server or API.
+- **weakness_focus:** The component of the Best-First heuristic that boosts priority of topics where your most recent score was low. Calculated as 1 minus your latest normalised score for that topic.
+- **get_predicted_questions():** A method that runs the full heuristic scoring and returns the top N candidates without removing them from the question pool. Used exclusively for the visualizer panel.
+- **Peek Operation:** Reading the top item of a queue without removing it — like looking at the next card in a deck without drawing it.
 
 
 
