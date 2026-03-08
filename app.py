@@ -927,6 +927,62 @@ if st.session_state.interview_active:
             st.markdown(st.session_state[tts_cache_key], unsafe_allow_html=True)
             st.session_state.last_played_q_id = q['id']
 
+        # ── AI Decision Path Panel ──
+        prev_q_text = "None"
+        prev_score = "N/A"
+        if st.session_state.answer_history:
+            last_record = st.session_state.answer_history[-1]
+            prev_q_text = last_record['question']
+            prev_score = f"{last_record['score']:.1f}/10"
+            
+        predicted_candidates = []
+        next_q_text = "End of Interview"
+        if not (st.session_state.get("csp_toggle") and st.session_state.get("planned_questions")):
+            predicted_candidates = st.session_state.selector.get_predicted_questions(
+                st.session_state.user_profile, st.session_state.answer_history, n=3
+            )
+            if predicted_candidates:
+                next_q_text = predicted_candidates[0][1]['question']
+        else:
+            if st.session_state.planned_questions:
+                next_q_text = st.session_state.planned_questions[0]['question']
+
+        st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; margin-bottom: 20px; gap: 15px;">
+                <div style="flex:1; padding: 12px; background-color: #f1f5f9; border-radius: 8px; opacity: 0.7;">
+                    <div style="font-size: 0.8rem; color: #64748b; font-weight: 600;">⏮️ PREVIOUS (Score: {prev_score})</div>
+                    <div style="font-size: 0.9rem; margin-top: 5px; color: #475569;">{prev_q_text[:65] + '...' if len(prev_q_text) > 65 else prev_q_text}</div>
+                </div>
+                <div style="flex:1; padding: 12px; background-color: #e0e7ff; border: 2px solid #818cf8; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: #4f46e5; font-weight: 600;">▶️ CURRENT</div>
+                    <div style="font-size: 0.9rem; margin-top: 5px; color: #1e293b; font-weight: 500;">{q['question'][:65] + '...' if len(q['question']) > 65 else q['question']}</div>
+                </div>
+                <div style="flex:1; padding: 12px; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; opacity: 0.8;">
+                    <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">⏭️ PREDICTED NEXT</div>
+                    <div style="font-size: 0.9rem; margin-top: 5px; color: #64748b;">{next_q_text[:65] + '...' if len(next_q_text) > 65 else next_q_text}</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("🧠 Internal AI Logic (Top Candidate Questions)"):
+            if st.session_state.get("csp_toggle"):
+                st.write("Using Constraint Satisfaction (Pre-planned Syllabus):")
+                if st.session_state.planned_questions:
+                    for i, planned_q in enumerate(st.session_state.planned_questions[:3]):
+                        st.write(f"{i+1}. {planned_q['question']}")
+                else:
+                    st.write("No more questions planned.")
+            else:
+                st.write("Using Best-First Search heuristics:")
+                if predicted_candidates:
+                    for i, (score, cand_q) in enumerate(predicted_candidates):
+                        extra = ""
+                        if score > 0.8:
+                            extra = " *(high priority due to weakness focus)*"
+                        st.write(f"{i+1}. **\"{cand_q['question']}\"** — Score: `{score:.2f}` {extra}")
+                else:
+                    st.write("No more candidate questions available.")
+
         # ── Question card ──
         diff_level  = get_difficulty_level(q)
         q_num_label = f"Question {answered + 1} of 10"
