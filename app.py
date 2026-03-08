@@ -62,6 +62,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+import random
+
+# Human-like AI Conversation constants
+TRANSITIONS = [
+    "Okay, that's a good point. Let me ask you something else.",
+    "Interesting, I like that answer. Moving on.",
+    "Right, good. Let's shift gears a bit.",
+    "Got it, thank you. Here's my next question for you.",
+    "Alright, I appreciate that. Now let me ask you about something different.",
+    "That's helpful context. Let me follow up with this.",
+    "Good, I'm getting a clearer picture. Next question.",
+    "Thank you for that. Let's continue.",
+]
+
+ACKNOWLEDGEMENTS = [
+    "Mmhm, okay.",
+    "Right, I see.",
+    "Got it, thank you.",
+    "Okay, noted.",
+    "Alright.",
+    "Sure, that makes sense.",
+    "Good, thank you for that.",
+]
+
+TIMING = {
+    "after_acknowledgement": 0.6,   # pause after "Got it"
+    "before_question": 0.8,         # pause before asking next question  
+    "after_question_spoken": 0.3,   # brief pause after TTS finishes
+    "closing_between_lines": 1.0,   # pause between closing sentences
+}
+
 # ---------------------------------------------------------------------------
 # GLOBAL CSS — Google Meet–inspired dark interview room + sidebar polish
 # ---------------------------------------------------------------------------
@@ -392,129 +423,140 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Profile form ──
-    st.markdown('<div class="sidebar-header">👤 Candidate Profile</div>', unsafe_allow_html=True)
-    st.markdown("<p style='color:#64748B;font-size:0.82rem;margin:4px 0 12px;'>Complete your profile to begin</p>", unsafe_allow_html=True)
+    # ── Profile form ──
 
-    with st.form("profile_form", clear_on_submit=False):
-        st.markdown("##### 📋 Personal Information")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            name = st.text_input("Full Name *", value=st.session_state.user_profile.get("name",""),
-                                 placeholder="Jane Doe")
-        with col_b:
-            email = st.text_input("Email *", value=st.session_state.user_profile.get("email",""),
-                                  placeholder="jane@example.com")
+    with st.expander("👤 Your Profile", expanded=not st.session_state.user_profile.get("profile_complete", False)):
+        with st.form("profile_form", clear_on_submit=False):
+            st.markdown("##### 📋 Personal Information")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                name = st.text_input("Full Name *", value=st.session_state.user_profile.get("name",""),
+                                     placeholder="Jane Doe")
+            with col_b:
+                email = st.text_input("Email *", value=st.session_state.user_profile.get("email",""),
+                                      placeholder="jane@example.com")
 
-        st.markdown("---")
-        st.markdown("##### 🎯 Career Goals")
+            st.markdown("---")
+            st.markdown("##### 🎯 Career Goals")
 
-        target_role = st.selectbox("Target Role *", [
-            "Software Engineer", "Data Scientist", "Backend Developer",
-            "Frontend Developer", "DevOps Engineer", "Data Analyst",
-            "Machine Learning Engineer", "Full Stack Developer",
-            "Cloud Architect", "Product Manager", "QA Engineer"
-        ])
+            target_role = st.selectbox("Target Role *", [
+                "Software Engineer", "Data Scientist", "Backend Developer",
+                "Frontend Developer", "DevOps Engineer", "Data Analyst",
+                "Machine Learning Engineer", "Full Stack Developer",
+                "Cloud Architect", "Product Manager", "QA Engineer"
+            ])
 
-        experience = st.radio("Experience Level *", [
-            "Entry Level (0-2 years)", "Mid Level (3-5 years)",
-            "Senior Level (5+ years)", "Lead/Manager (8+ years)"
-        ], index=0, horizontal=False)
+            experience = st.radio("Experience Level *", [
+                "Entry Level (0-2 years)", "Mid Level (3-5 years)",
+                "Senior Level (5+ years)", "Lead/Manager (8+ years)"
+            ], index=0, horizontal=False)
 
-        st.markdown("##### 💻 Skills")
-        col_c, col_d = st.columns(2)
-        with col_c:
-            langs = st.multiselect("Languages", ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"],
-                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"]])
-            dbs   = st.multiselect("Databases",  ["SQL","MongoDB","PostgreSQL","MySQL","Redis"],
-                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["SQL","MongoDB","PostgreSQL","MySQL","Redis"]])
-        with col_d:
-            fws   = st.multiselect("Frameworks", ["React","Django","Flask","Spring","Angular","TensorFlow"],
-                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["React","Django","Flask","Spring","Angular","TensorFlow"]])
-            tools = st.multiselect("Tools",      ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"],
-                                   default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"]])
+            st.markdown("##### 💻 Skills")
+            col_c, col_d = st.columns(2)
+            with col_c:
+                langs = st.multiselect("Languages", ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"],
+                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"]])
+                dbs   = st.multiselect("Databases",  ["SQL","MongoDB","PostgreSQL","MySQL","Redis"],
+                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["SQL","MongoDB","PostgreSQL","MySQL","Redis"]])
+            with col_d:
+                fws   = st.multiselect("Frameworks", ["React","Django","Flask","Spring","Angular","TensorFlow"],
+                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["React","Django","Flask","Spring","Angular","TensorFlow"]])
+                tools = st.multiselect("Tools",      ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"],
+                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"]])
 
-        all_skills = langs + dbs + fws + tools
+            all_skills = langs + dbs + fws + tools
 
-        _, col_mid, _ = st.columns([1,2,1])
-        with col_mid:
-            submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
+            _, col_mid, _ = st.columns([1,2,1])
+            with col_mid:
+                submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
 
-        if submitted:
-            errors = []
-            if not name:  errors.append("Name is required")
-            if not email or "@" not in email: errors.append("Valid email required")
-            if len(all_skills) < 1: errors.append("Select at least 1 skill")
-            if errors:
-                for e in errors: st.error(f"❌ {e}")
-            else:
-                st.session_state.user_profile = {
-                    "name": name, "email": email,
-                    "target_role": target_role,
-                    "experience_level": experience.split("(")[0].strip().lower(),
-                    "skills": all_skills, "profile_complete": True,
-                    "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                st.success("✅ Profile saved! Click Start Interview below.")
-                st.balloons()
+            if submitted:
+                errors = []
+                if not name:  errors.append("Name is required")
+                if not email or "@" not in email: errors.append("Valid email required")
+                if len(all_skills) < 1: errors.append("Select at least 1 skill")
+                if errors:
+                    for e in errors: st.error(f"❌ {e}")
+                else:
+                    st.session_state.user_profile = {
+                        "name": name, "email": email,
+                        "target_role": target_role,
+                        "experience_level": experience.split("(")[0].strip().lower(),
+                        "skills": all_skills, "profile_complete": True,
+                        "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    st.success("✅ Profile saved! Click Start Interview below.")
+                    st.balloons()
 
-    st.markdown("---")
+    # ── Voice Selector ──
+    with st.expander("🎙️ Voice Settings", expanded=False):
+        voice_options = {
+            "Professional Female (Jenny)": "en-US-JennyNeural",
+            "Professional Male (Guy)": "en-US-GuyNeural",
+            "Indian English Female (Neerja)": "en-IN-NeerjaNeural"
+        }
+        selected_label = st.selectbox(
+            "Choose AI voice:",
+            options=list(voice_options.keys()),
+            index=0
+        )
+        st.session_state.selected_voice = voice_options[selected_label]
+        
+        if st.button("🔊 Test Voice", use_container_width=True):
+            text_to_speech_autoplay(f"Hello! This is a test of the {selected_label} voice.")
 
     # ── Interview Controls ──
-    st.markdown('<div class="sidebar-header">🎮 Interview Controls</div>', unsafe_allow_html=True)
-
-    if not st.session_state.interview_active and not st.session_state.interview_complete:
-        st.checkbox("⚙️ Use Pre-Planned Syllabus (CSP & Backtracking)", value=False, key="csp_toggle")
-        st.checkbox("⚡ Enable AI-Enhanced Mode (Gemini)", value=False, key="ai_enhanced_mode")
-        
-        if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
-            if st.session_state.user_profile:
-                reset_interview()
-                
-                if st.session_state.get("csp_toggle"):
-                    planner = ConstraintSatisfactionPlanner(st.session_state.kb)
-                    planned = planner.generate_interview_plan()
-                    if not planned:
-                        st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
-                        import time; time.sleep(2.5)
-                        first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
-                        st.session_state.planned_questions = []
-                    else:
-                        st.session_state.planned_questions = planned
-                        first_q = st.session_state.planned_questions.pop(0)
-                else:
-                    first_q = st.session_state.selector.select_next_question(
-                        st.session_state.user_profile, []
-                    )
+    with st.expander("⚙️ Interview Settings", expanded=False):
+        if not st.session_state.interview_active and not st.session_state.interview_complete:
+            st.checkbox("⚙️ Use Pre-Planned Syllabus (CSP & Backtracking)", value=False, key="csp_toggle")
+            st.checkbox("⚡ Enable AI-Enhanced Mode (Gemini)", value=False, key="ai_enhanced_mode")
+            
+            if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
+                if st.session_state.user_profile:
+                    reset_interview()
                     
-                st.session_state.current_question    = first_q
-                st.session_state.interview_active    = True
-                st.session_state.interview_stage     = 'intro'
-                st.session_state.interview_start_time = datetime.now()
+                    if st.session_state.get("csp_toggle"):
+                        planner = ConstraintSatisfactionPlanner(st.session_state.kb)
+                        planned = planner.generate_interview_plan()
+                        if not planned:
+                            st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
+                            import time; time.sleep(2.5)
+                            first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
+                            st.session_state.planned_questions = []
+                        else:
+                            st.session_state.planned_questions = planned
+                            first_q = st.session_state.planned_questions.pop(0)
+                    else:
+                        first_q = st.session_state.selector.select_next_question(
+                            st.session_state.user_profile, []
+                        )
+                        
+                    st.session_state.current_question    = first_q
+                    st.session_state.interview_active    = True
+                    st.session_state.interview_stage     = 'intro'
+                    st.session_state.interview_start_time = datetime.now()
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Please complete and save your profile first!")
+
+        if st.session_state.interview_active:
+            if st.button("⏹️ END INTERVIEW EARLY", use_container_width=True):
+                with st.spinner("Generating report…"):
+                    st.session_state.report = st.session_state.reporter.generate_report(
+                        st.session_state.user_profile, st.session_state.answer_history
+                    )
+                st.session_state.interview_active   = False
+                st.session_state.interview_complete = True
+                st.session_state.interview_stage    = 'report'
                 st.rerun()
-            else:
-                st.warning("⚠️ Please complete and save your profile first!")
 
-    if st.session_state.interview_active:
-        if st.button("⏹️ END INTERVIEW EARLY", use_container_width=True):
-            with st.spinner("Generating report…"):
-                st.session_state.report = st.session_state.reporter.generate_report(
-                    st.session_state.user_profile, st.session_state.answer_history
-                )
-            st.session_state.interview_active   = False
-            st.session_state.interview_complete = True
-            st.session_state.interview_stage    = 'report'
-            st.rerun()
-
-    if st.session_state.interview_complete:
-        if st.button("🔄 START NEW SESSION", use_container_width=True):
-            reset_interview()
-            st.rerun()
-
-    st.markdown("---")
-    
+        if st.session_state.interview_complete:
+            if st.button("🔄 START NEW SESSION", use_container_width=True):
+                reset_interview()
+                st.rerun()
+                
     # ── Knowledge Explorer (BFS) ──
-    st.markdown('<div class="sidebar-header">📚 Study Topics</div>', unsafe_allow_html=True)
-    with st.expander("Explore Knowledge Base (BFS)", expanded=False):
+    with st.expander("📚 Study Topics (BFS)", expanded=False):
         st.markdown("**Unit II: Uninformed Search (BFS)**\\nTraversing Root → Topic → Difficulty → Question")
         bfs_nodes = st.session_state.kb.explore_topics_bfs()
         for node in bfs_nodes:
@@ -704,6 +746,7 @@ if st.session_state.interview_active:
                 
                 # Feature 1: Personalised Voice Introduction (Gemini)
                 if st.session_state.get('ai_enhanced_mode', False):
+                    import streamlit as st
                     from utils import call_gemini
                     prompt = (
                         f"You are an AI interview coach. Write a short 2-sentence welcome message "
@@ -716,21 +759,24 @@ if st.session_state.interview_active:
                         st.session_state.intro_message = llm_greeting
 
             greeting = st.session_state.intro_message or (
-                f"Hello {cand_name}, welcome to your AI interview session for the role of "
-                f"{profile.get('target_role', 'Software Engineer')}. "
-                "I will be asking you a series of technical questions. "
-                "Please answer clearly and in detail. Let us begin!"
+                f"Hi {cand_name}, I'm an AI, your interviewer today. "
+                f"Really glad you could make it. We'll be going through some {profile.get('target_role', 'Software Engineer')} questions today — should take about 15-20 minutes. "
+                "Feel free to take your time with each answer, there's no rush. "
+                "Ready to get started?"
             )
-            # Cache audio bytes so it survives reruns without re-requesting Google TTS
-            if 'cached_tts_greeting' not in st.session_state:
-                st.session_state.cached_tts_greeting = text_to_speech_autoplay(greeting)
-            st.markdown(st.session_state.cached_tts_greeting, unsafe_allow_html=True)
+            
+            # 1.2 Human-like Opening Sequence
+            text_to_speech_autoplay("Hello? Can you hear me okay? Great, give me just one second...")
+            time.sleep(1.5)
+            text_to_speech_autoplay(greeting)
             st.session_state.intro_spoken = True
 
         st.markdown("<br>", unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             if st.button("👉 I'm Ready — Ask First Question", use_container_width=True, type="primary", key="btn_ready"):
+                text_to_speech_autoplay("Perfect, let's dive in. First question:")
+                time.sleep(0.8)
                 st.session_state.interview_stage = 'questions'
                 st.rerun()
 
@@ -748,6 +794,7 @@ if st.session_state.interview_active:
         border-radius:14px;
         overflow:hidden;
         font-family:'Inter',sans-serif;
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
     ">
         <!-- Header bar -->
         <div style="
@@ -774,8 +821,8 @@ if st.session_state.interview_active:
                 autoplay playsinline muted
                 style="
                     width:100%;
-                    height:480px;
-                    object-fit:contain; /* Never crop the video, show the full frame */
+                    height:490px;
+                    object-fit:cover; /* Fill the card nicely */
                     display:block;
                     transform:scaleX(-1);  /* Mirror like every selfie camera */
                 "
@@ -877,7 +924,73 @@ if st.session_state.interview_active:
     </script>
     """
 
-    components.html(camera_html, height=580, scrolling=False)
+    col_avatar, col_cam = st.columns(2)
+    with col_avatar:
+        avatar_emotion = "listening" if not st.session_state.mic_muted else "neutral"
+        status_color = "#10b981" if not st.session_state.mic_muted else "#9aa0a6"
+        status_bg = "rgba(16,185,129,0.1)" if not st.session_state.mic_muted else "rgba(154,160,166,0.1)"
+        status_text = "Listening" if not st.session_state.mic_muted else "Waiting"
+        
+        v_label = "Interviewer"
+        for label, val in voice_options.items():
+            if val == st.session_state.get('selected_voice'):
+                v_label = label
+                break
+                
+        avatar_html = f"""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        @keyframes pulse {{
+            0% {{ opacity:1; transform:scale(1); }}
+            50% {{ opacity:0.6; transform:scale(1.3); }}
+            100% {{ opacity:1; transform:scale(1); }}
+        }}
+        @keyframes bounce {{
+            0%, 20%, 50%, 80%, 100% {{ transform: translateY(0); }}
+            40% {{ transform: translateY(-10px); }}
+            60% {{ transform: translateY(-5px); }}
+        }}
+        @keyframes float {{
+            0% {{ transform: translateY(0); }}
+            50% {{ transform: translateY(-6px); }}
+            100% {{ transform: translateY(0); }}
+        }}
+        .pulse {{ animation: pulse 2s infinite; }}
+        .bounce {{ animation: bounce 2s infinite; }}
+        .float {{ animation: float 3s ease-in-out infinite; }}
+        </style>
+        <div style="
+            background:#1a1b1e;
+            border:2px solid #3c4043;
+            border-radius:14px;
+            padding: 20px;
+            height: 496px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Inter', sans-serif;
+            box-sizing: border-box;
+            box-shadow: 0 0 15px {"rgba(16,185,129,0.15)" if not st.session_state.mic_muted else "rgba(154,160,166,0.15)"};
+        ">
+            <div style="margin-bottom:auto; color:#9aa0a6; font-size:0.85rem; font-weight:500; width:100%; text-align:left; border-bottom:1px solid #2d2f31; padding-bottom:10px;">
+                🤖 AI Coach — <strong style="color:#e8eaed;">{v_label}</strong>
+            </div>
+            
+            <div style="margin: auto 0; display:flex; flex-direction:column; align-items:center;">
+                {get_robot_avatar(avatar_emotion)}
+                <div style="margin-top:35px; padding:8px 20px; border-radius:20px; font-size:0.8rem; font-weight:600; 
+                            background:{status_bg}; color:{status_color}; text-transform:uppercase; letter-spacing:0.5px;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor; margin-right:6px; animation: pulse 1.5s infinite;"></span>
+                    {status_text}
+                </div>
+            </div>
+        </div>
+        """
+        components.html(avatar_html, height=540, scrolling=False)
+        
+    with col_cam:
+        components.html(camera_html, height=540, scrolling=False)
 
     # ── Meeting control bar ──
     st.markdown("")
@@ -906,11 +1019,46 @@ if st.session_state.interview_active:
 
     # ── WRAPUP STAGE ──
     if stage == 'wrapup':
-        closing = (
-            f"Thank you, {cand_name}, for completing the interview. "
-            "I will now evaluate all your responses and generate your performance report."
-        )
-        st.markdown(text_to_speech_autoplay(closing), unsafe_allow_html=True)
+        if "wrapup_started" not in st.session_state:
+            st.session_state.wrapup_started = True
+            
+            # 1.3 Human-like Closing Sequence
+            closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
+            text_to_speech_autoplay(closing1)
+            time.sleep(TIMING["closing_between_lines"])
+            
+            # Determine strongest topic
+            strongest_topic = "general concepts"
+            if st.session_state.answer_history:
+                # Group by topic and average
+                topic_scores = {}
+                for rec in st.session_state.answer_history:
+                    t = rec.get("topic", "general")
+                    if t not in topic_scores: topic_scores[t] = []
+                    topic_scores[t].append(rec["score"])
+                if topic_scores:
+                    avgs = {t: sum(s)/len(s) for t, s in topic_scores.items()}
+                    strongest_topic = max(avgs, key=avgs.get)
+            
+            closing2 = f"You had some strong moments, especially on {strongest_topic}. I'll put together your feedback report now."
+            
+            if st.session_state.get('ai_enhanced_mode', False):
+                try:
+                    from utils import call_gemini
+                    prompt = (
+                        f"You are an AI interview coach concluding an interview with {cand_name}. "
+                        f"The candidate's strongest topic was {strongest_topic}. "
+                        f"Write a warm 2-sentence closing statement celebrating their strong moments on that topic "
+                        f"and letting them know you'll put together their feedback report now. Be extremely conversational."
+                    )
+                    llm_close = call_gemini(prompt, feature_name="Feature: Voice Closing")
+                    if llm_close:
+                        closing2 = llm_close
+                except Exception:
+                    pass
+            
+            text_to_speech_autoplay(closing2)
+            time.sleep(1.5)
         st.markdown("""
             <div style="background:linear-gradient(135deg,#065f46,#047857);
                         color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
@@ -936,51 +1084,108 @@ if st.session_state.interview_active:
         # NEVER re-requested from Google's TTS server on subsequent reruns
         # (which was causing the audio to restart / break mid-sentence).
         if st.session_state.last_played_q_id != q['id']:
-            tts_cache_key = f"tts_q_{q['id']}"
-            if tts_cache_key not in st.session_state:
-                # Generate audio only the first time this question appears
-                st.session_state[tts_cache_key] = text_to_speech_autoplay(q['question'])
-            # Play from cache — never re-generates on reruns
-            st.markdown(st.session_state[tts_cache_key], unsafe_allow_html=True)
+            if answered > 0:
+                # 1.4 Acknowledgement and Transitions
+                ack = random.choice(ACKNOWLEDGEMENTS)
+                trans = random.choice(TRANSITIONS)
+                text_to_speech_autoplay(ack)
+                time.sleep(TIMING["after_acknowledgement"])
+                text_to_speech_autoplay(trans)
+                time.sleep(TIMING["before_question"])
+                text_to_speech_autoplay(q['question'])
+                time.sleep(TIMING["after_question_spoken"])
+            else:
+                text_to_speech_autoplay(q['question'])
+                time.sleep(TIMING["after_question_spoken"])
+                
             st.session_state.last_played_q_id = q['id']
 
-        # ── AI Decision Path Panel ──
-        prev_q_text = "None"
-        prev_score = "N/A"
+        # ── Part 3.3 Score Display After Each Answer ──
         if st.session_state.answer_history:
             last_record = st.session_state.answer_history[-1]
-            prev_q_text = last_record['question']
-            prev_score = f"{last_record['score']:.1f}/10"
+            last_q = last_record['question']
+            sc = last_record['score']
+            last_q_id = last_record['question_id']
+            last_q_data = st.session_state.kb.get_question_by_id(last_q_id)
             
+            sc_icon = "✅" if sc >= 7 else "⚠️" if sc >= 5 else "❌"
+            sc_color = "#10b981" if sc >= 7 else "#f59e0b" if sc >= 5 else "#ef4444"
+            sc_text = "Good Answer" if sc >= 7 else "Needs Details" if sc >= 5 else "Needs Practice"
+            
+            fb = last_record['feedback']
+            missing_c = len(fb.get('missing_concepts', []))
+            total_concepts = len(last_q_data.get('concepts', [])) if last_q_data else 0
+            matched_concepts = max(0, total_concepts - missing_c)
+            
+            ans_lower = last_record['answer'].lower()
+            total_kw = len(last_q_data.get('keywords', [])) if last_q_data else 0
+            matched_kw_count = sum(1 for k in last_q_data.get('keywords', []) if k.lower() in ans_lower) if last_q_data else 0
+            
+            st.markdown(f"""
+            <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
+                    <span style="color:#e2e8f0; font-size:1.1rem; font-weight:600;">Your Score: {sc:.1f} / 10 {sc_icon}</span>
+                    <span style="color:{sc_color}; font-weight:600;">{sc_text}</span>
+                </div>
+            """, unsafe_allow_html=True)
+            st.progress(sc / 10.0)
+            
+            st.markdown(f"""
+                <div style="display:flex; justify-content:space-between; margin-top: 0.8rem; font-size:0.9rem; color:#94a3b8;">
+                    <span>Keywords matched: {matched_kw_count}/{total_kw}</span>
+                    <span>Concepts covered: {matched_concepts}/{total_concepts}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Part 2 — Instant Suggestion Button
+            instant_key = f"instant_tip_{last_q_id}"
+            if instant_key not in st.session_state:
+                if st.button("💡 Get Instant Coaching Tip", key=f"btn_tip_{last_q_id}"):
+                    with st.spinner("Getting your tip..."):
+                        if st.session_state.get('ai_enhanced_mode', False):
+                            try:
+                                from utils import call_gemini
+                                matched_kw_list = [k for k in last_q_data.get('keywords', []) if k.lower() in ans_lower] if last_q_data else []
+                                missing_c_list = fb.get('missing_concepts', [])
+                                prompt = (
+                                    f"You are a friendly interview coach giving quick real-time advice.\n"
+                                    f"The candidate just answered this interview question: '{last_q}'\n"
+                                    f"Their answer was: '{last_record['answer']}'\n"
+                                    f"They scored {sc}/10.\n"
+                                    f"They correctly mentioned: {matched_kw_list}\n"
+                                    f"They missed these concepts: {missing_c_list}\n\n"
+                                    f"Give ONE specific, actionable tip they can use RIGHT NOW to improve "
+                                    f"this answer if asked again. Start with what they did right in one "
+                                    f"sentence, then give the improvement tip. Maximum 3 sentences total. "
+                                    f"Be conversational and encouraging, like a friend helping you prep. "
+                                    f"No bullet points, no headers."
+                                )
+                                tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
+                                if tip:
+                                    st.session_state[instant_key] = tip
+                                else:
+                                    st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                            except Exception:
+                                st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                        else:
+                            st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                    st.rerun()
+            
+            if instant_key in st.session_state:
+                st.markdown(f"""
+                <div style="background:#fffbeb; border-left:4px solid #f59e0b; padding:1rem; border-radius:8px; margin-bottom:1.5rem;">
+                    <div style="color:#b45309; font-weight:700; margin-bottom:0.4rem; font-size:0.9rem;">💡 Quick Coaching Tip</div>
+                    <div style="color:#92400e; font-size:0.95rem;">{st.session_state[instant_key]}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
         predicted_candidates = []
-        next_q_text = "End of Interview"
         if not (st.session_state.get("csp_toggle") and st.session_state.get("planned_questions")):
             predicted_candidates = st.session_state.selector.get_predicted_questions(
                 st.session_state.user_profile, st.session_state.answer_history, n=3
             )
-            if predicted_candidates:
-                next_q_text = predicted_candidates[0][1]['question']
-        else:
-            if st.session_state.planned_questions:
-                next_q_text = st.session_state.planned_questions[0]['question']
 
-        st.markdown(f"""
-            <div style="display:flex; justify-content:space-between; margin-bottom: 20px; gap: 15px;">
-                <div style="flex:1; padding: 12px; background-color: #f1f5f9; border-radius: 8px; opacity: 0.7;">
-                    <div style="font-size: 0.8rem; color: #64748b; font-weight: 600;">⏮️ PREVIOUS (Score: {prev_score})</div>
-                    <div style="font-size: 0.9rem; margin-top: 5px; color: #475569;">{prev_q_text[:65] + '...' if len(prev_q_text) > 65 else prev_q_text}</div>
-                </div>
-                <div style="flex:1; padding: 12px; background-color: #e0e7ff; border: 2px solid #818cf8; border-radius: 8px;">
-                    <div style="font-size: 0.8rem; color: #4f46e5; font-weight: 600;">▶️ CURRENT</div>
-                    <div style="font-size: 0.9rem; margin-top: 5px; color: #1e293b; font-weight: 500;">{q['question'][:65] + '...' if len(q['question']) > 65 else q['question']}</div>
-                </div>
-                <div style="flex:1; padding: 12px; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; opacity: 0.8;">
-                    <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">⏭️ PREDICTED NEXT</div>
-                    <div style="font-size: 0.9rem; margin-top: 5px; color: #64748b;">{next_q_text[:65] + '...' if len(next_q_text) > 65 else next_q_text}</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
         with st.expander("🧠 Internal AI Logic (Top Candidate Questions)"):
             if st.session_state.get("csp_toggle"):
                 st.write("Using Constraint Satisfaction (Pre-planned Syllabus):")
@@ -1002,18 +1207,37 @@ if st.session_state.interview_active:
 
         # ── Question card ──
         diff_level  = get_difficulty_level(q)
-        q_num_label = f"Question {answered + 1} of 10"
         st.markdown(f"""
-            <div class="q-card">
-                <div class="q-number">{q_num_label} &nbsp;·&nbsp;
+            <div style="text-align:center; font-size:1.1rem; color:#94a3b8; font-weight:600; text-transform:uppercase; margin-bottom: 0.6rem; margin-top: 1rem;">
+                Question {answered + 1} of 10
+            </div>
+        """, unsafe_allow_html=True)
+            
+        st.markdown(f"""
+            <div style="background:white; color:#1e293b; padding:1.8rem; border-radius:14px; text-align:center; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); border:1px solid #e2e8f0; margin-bottom:1rem;">
+                <div style="font-size:20px; font-weight:600; line-height:1.6; margin-bottom:1rem;">{q['question']}</div>
+                <div style="display:inline-block; margin-top:0.4rem;">
                     <span class="badge badge-{diff_level}">{diff_level.title()}</span>
+                    <span style="font-size:0.8rem; color:#64748b; margin-left:10px;">📌 Topic: {q.get('topic','General').title()}</span>
                 </div>
-                <div class="q-text">{q['question']}</div>
-                <div class="q-topic">📌 Topic: {q.get('topic','General').title()}</div>
             </div>""", unsafe_allow_html=True)
 
-        # Progress bar
-        st.progress(answered / 10)
+        # ── Progress dots ──
+        dots_html = []
+        for i in range(10):
+            if i < len(st.session_state.answer_history):
+                # Answered: color based on score
+                s = st.session_state.answer_history[i]['score']
+                dot_color = "#10b981" if s >= 7 else "#f59e0b" if s >= 5 else "#ef4444"
+                dots_html.append(f'<div style="width:12px; height:12px; border-radius:50%; background:{dot_color};" title="Score: {s}"></div>')
+            elif i == answered:
+                # Current
+                dots_html.append('<div style="width:12px; height:12px; border-radius:50%; background:#3b82f6; box-shadow:0 0 8px rgba(59,130,246,0.6); animation: pulse 1.5s infinite;"></div>')
+            else:
+                # Unanswered
+                dots_html.append('<div style="width:12px; height:12px; border-radius:50%; background:#e2e8f0; border:1px solid #cbd5e1;"></div>')
+        
+        st.markdown(f"""<div style="display:flex; justify-content:center; gap:6px; margin-bottom:2rem;">{"".join(dots_html)}</div>""", unsafe_allow_html=True)
 
         # ── Answer section ──
         st.markdown("#### 🎤 Your Answer")

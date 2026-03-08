@@ -419,34 +419,70 @@ def speech_to_text(audio_bytes: bytes) -> str | None:
         return None
 
 
-def text_to_speech_autoplay(text: str) -> str:
-    """
-    Convert text to an MP3 via gTTS and return an invisible HTML
-    <audio autoplay> tag so Streamlit plays it in the browser.
+import edge_tts
+import asyncio
+import tempfile
+import os
 
-    Returns raw HTML string (safe to pass to st.markdown(…, unsafe_allow_html=True)).
-    Falls back silently if gTTS or network is unavailable.
-    """
+VOICE_NAME = "en-US-JennyNeural"
+
+async def _generate_tts_async(text: str, voice: str) -> bytes:
+    communicate = edge_tts.Communicate(text, voice)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+        temp_path = f.name
+    await communicate.save(temp_path)
+    with open(temp_path, "rb") as f:
+        audio_bytes = f.read()
+    os.unlink(temp_path)
+    return audio_bytes
+
+def text_to_speech_autoplay(text: str) -> None:
     if not text or not text.strip():
-        return ""
-    try:
-        from gtts import gTTS
-        from io import BytesIO
-        import base64
+        return
+        
+    cache_key = f"tts_cache_{hash(text)}"
+    if cache_key in st.session_state:
+        b64 = st.session_state[cache_key]
+        audio_html = f"""
+            <audio autoplay>
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mpeg">
+            </audio>
+        """
+        st.components.v1.html(audio_html, height=0)
+        return
 
-        tts = gTTS(text=text, lang="en", slow=False)
-        fp = BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        b64 = base64.b64encode(fp.read()).decode("utf-8")
-        return (
-            f'<audio autoplay="true" controls="false" '
-            f'src="data:audio/mp3;base64,{b64}" '
-            f'style="display:none;"></audio>'
-        )
-    except Exception:
-        # TTS failure must never crash the interview — fall back silently
-        return ""
+    voice = st.session_state.get("selected_voice", VOICE_NAME)
+    try:
+        audio_bytes = asyncio.run(_generate_tts_async(text, voice))
+        b64 = base64.b64encode(audio_bytes).decode()
+        st.session_state[cache_key] = b64
+        audio_html = f"""
+            <audio autoplay>
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mpeg">
+            </audio>
+        """
+        st.components.v1.html(audio_html, height=0)
+        print(f"[TTS] edge-tts success | Voice: {voice}")
+    except Exception as e:
+        print(f"[TTS] edge-tts failed: {e} | Falling back to gTTS...")
+        try:
+            from gtts import gTTS
+            import io
+            tts = gTTS(text=text, lang='en')
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            b64 = base64.b64encode(fp.read()).decode()
+            st.session_state[cache_key] = b64
+            audio_html = f"""
+                <audio autoplay>
+                    <source src="data:audio/mp3;base64,{b64}" type="audio/mpeg">
+                </audio>
+            """
+            st.components.v1.html(audio_html, height=0)
+            print("[TTS] gTTS fallback success")
+        except Exception as fallback_e:
+            print(f"[TTS] Both TTS systems failed: {fallback_e}")
 
 def save_interview_session(session_data, filename=None):
     """Save interview session to file"""
