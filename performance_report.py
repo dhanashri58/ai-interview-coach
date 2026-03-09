@@ -6,6 +6,7 @@ Generates comprehensive feedback and learning path
 from typing import List, Dict, Any
 from datetime import datetime
 import numpy as np
+from learning_path_astar import AStarLearningPath
 
 class PerformanceReport:
     def __init__(self):
@@ -69,6 +70,42 @@ class PerformanceReport:
             "next_steps": self._generate_next_steps(weaknesses, user_profile),
             "resources": self._suggest_resources(weaknesses)
         }
+        
+        # Feature 3: Report Narrative Summary
+        try:
+            import streamlit as st
+            if st.session_state.get('ai_enhanced_mode', False):
+                from utils import call_gemini
+                
+                role = user_profile.get("target_role", "candidate")
+                
+                # Extract learning path details
+                module_names_list = ", ".join([step['goal'] for step in learning_path if step.get('phase') != 'optimal_plan'])
+                
+                total_hours = "unknown"
+                for step in learning_path:
+                    if step.get('phase') == 'optimal_plan':
+                        total_hours = step.get('estimated_time', 'unknown')
+                        break
+                        
+                # Simplify topic scores to a readable string
+                topic_scores_str = ", ".join([f"{topic}: {data['average_score']}/10" for topic, data in topic_performance.items()])
+                
+                prompt = (
+                    f"You are an AI career coach reviewing an interview performance.\n"
+                    f"The candidate interviewed for: {role}\n"
+                    f"Their topic scores were: {topic_scores_str}\n"
+                    f"The optimal study path calculated is: {module_names_list} totalling {total_hours}.\n"
+                    f"Write a 3-sentence personalised coaching summary. Mention their strongest topic, "
+                    f"their weakest topic, and end with an encouraging closing line. "
+                    f"Be conversational, not robotic."
+                )
+                
+                llm_summary = call_gemini(prompt, feature_name="Feature 3: Report Summary")
+                if llm_summary:
+                    report["llm_summary"] = llm_summary
+        except Exception as e:
+            print("Failed to generate LLM summary:", e)
         
         return report
     
@@ -252,38 +289,55 @@ class PerformanceReport:
         return progress
     
     def _generate_learning_path(self, weaknesses: List[Dict], profile: Dict) -> List[Dict]:
-        """Generate personalized learning path"""
+        """Generate optimal learning path using A* Search algorithm"""
+        # We need the current scores as the initial state of the A* search
+        # If the user has never answered a question, all topics default to 0
+        topic_scores = {}
+        for w in weaknesses:
+            topic_scores[w["topic"].lower()] = w["score"]
+            
+        # If user has no weaknesses recorded yet (e.g., brand new profile)
+        if not topic_scores:
+            target_role = profile.get("target_role", "software engineer").lower()
+            if "data" in target_role:
+                topic_scores = {"python": 0, "sql": 0}
+            else:
+                topic_scores = {"python": 0, "dsa": 0}
+                
+        # Run A* Algorithm (Target mastery defaults to 8.0)
+        astar = AStarLearningPath(topic_scores)
+        optimal_modules, total_hours = astar.find_path()
+        
         learning_path = []
-        target_role = profile.get("target_role", "Software Engineer")
         
-        # Priority 1: Fix weakest topics
-        for weakness in weaknesses[:3]:
-            learning_path.append({
-                "phase": "foundation",
-                "focus": weakness["topic"],
-                "goal": f"Improve {weakness['topic']} score to 7+",
-                "estimated_time": "2-3 days",
-                "priority": "high"
+        if optimal_modules:
+            for mod in optimal_modules:
+                learning_path.append({
+                    "phase": mod.difficulty,
+                    "focus": mod.topic.upper(),
+                    "goal": mod.name,
+                    "estimated_time": f"{mod.hours_cost} hours",
+                    "priority": "high" if mod.difficulty == "beginner" else "medium"
+                })
+                
+            # Add summary element at the end referencing the total optimized cost
+            learning_path.insert(0, {
+                "phase": "optimal_plan",
+                "focus": "A* Search Minimal Path",
+                "goal": f"Reach mastery in all topics",
+                "estimated_time": f"Total: {total_hours} hours",
+                "priority": "critical"
             })
-        
-        # Priority 2: Practice with mixed difficulty
-        learning_path.append({
-            "phase": "practice",
-            "focus": "mixed topics",
-            "goal": f"Practice full interviews for {target_role}",
-            "estimated_time": "3-4 days",
-            "priority": "medium"
-        })
-        
-        # Priority 3: Advanced topics
-        learning_path.append({
-            "phase": "advanced",
-            "focus": "advanced concepts",
-            "goal": "Master complex scenarios",
-            "estimated_time": "2 days",
-            "priority": "low"
-        })
-        
+        else:
+            # Fallback if A* fails to find path
+            learning_path.append({
+                "phase": "practice",
+                "focus": "mixed topics",
+                "goal": f"Practice full interviews",
+                "estimated_time": "3-4 days",
+                "priority": "medium"
+            })
+            
         return learning_path
     
     def _generate_recommendations(self, weaknesses: List[Dict], strengths: List[Dict]) -> List[str]:

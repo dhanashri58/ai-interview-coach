@@ -74,6 +74,15 @@ class KnowledgeBase:
                         "difficulty_level": "advanced",
                         "keywords": ["iterator", "lazy", "memory", "yield", "state"],
                         "concepts": ["lazy evaluation", "memory efficiency", "iteration protocol"]
+                    },
+                    {
+                        "id": 101,
+                        "question": "Explain metaclasses in Python and their use cases.",
+                        "topic": "python",
+                        "difficulty": "advanced",
+                        "difficulty_level": "advanced",
+                        "keywords": ["type", "class", "metaclass", "behavior", "singleton"],
+                        "concepts": ["metaprogramming", "class creation", "object model"]
                     }
                 ]
             },
@@ -108,6 +117,17 @@ class KnowledgeBase:
                         "keywords": ["INNER", "LEFT", "RIGHT", "FULL", "combine"],
                         "concepts": ["relational algebra", "table relationships", "foreign keys"]
                     }
+                ],
+                "advanced": [
+                    {
+                        "id": 102,
+                        "question": "Explain window functions and how they differ from GROUP BY.",
+                        "topic": "sql",
+                        "difficulty": "advanced",
+                        "difficulty_level": "advanced",
+                        "keywords": ["over", "partition", "rank", "row_number", "aggregate"],
+                        "concepts": ["window functions", "aggregation", "analytic functions"]
+                    }
                 ]
             },
             "dsa": {
@@ -131,6 +151,17 @@ class KnowledgeBase:
                         "difficulty_level": "intermediate",
                         "keywords": ["divide", "conquer", "sorted", "logarithmic", "mid"],
                         "concepts": ["divide and conquer", "searching", "logarithmic time"]
+                    }
+                ],
+                "advanced": [
+                    {
+                        "id": 103,
+                        "question": "Explain dynamic programming and the concept of memoization.",
+                        "topic": "dsa",
+                        "difficulty": "advanced",
+                        "difficulty_level": "advanced",
+                        "keywords": ["overlapping", "subproblems", "optimal", "cache", "bottom-up"],
+                        "concepts": ["dynamic programming", "memoization", "optimization"]
                     }
                 ]
             },
@@ -261,4 +292,58 @@ class KnowledgeBase:
             "common_mistakes": []
         })
 
+
+    def explore_topics_bfs(self) -> List[Dict]:
+        """
+        Unit II: Uninformed Search - Breadth-First Search (BFS)
+        Traverses the knowledge base tree level by level.
+        Tree Structure: Root -> Topics -> Difficulties -> Questions
+        """
+        queue = []
+        result = []
+        
+        # Enqueue Root
+        queue.append({
+            "level": "root", 
+            "name": "Knowledge Base Data", 
+            "children": list(self.questions.keys())
+        })
+        
+        while queue:
+            node = queue.pop(0)
+            result.append(node)
+            
+            if node["level"] == "root":
+                for topic in node["children"]:
+                    queue.append({
+                        "level": "topic",
+                        "name": topic.upper(),
+                        "parent": "root",
+                        "children": list(self.questions[topic].keys())
+                    })
+                    
+            elif node["level"] == "topic":
+                topic = node["name"].lower()
+                for diff in node["children"]:
+                    queue.append({
+                        "level": "difficulty",
+                        "name": diff.capitalize(),
+                        "parent": topic,
+                        "children": self.questions[topic][diff]
+                    })
+                    
+            elif node["level"] == "difficulty":
+                topic = node["parent"]
+                diff = node["name"].lower()
+                for q in node["children"]:
+                    queue.append({
+                        "level": "question",
+                        "id": q["id"],
+                        "name": q["question"],
+                        "parent": f"{topic} -> {diff}",
+                        "topic": topic,
+                        "difficulty": diff
+                    })
+                    
+        return result
 

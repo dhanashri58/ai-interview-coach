@@ -4,7 +4,7 @@ Implements Best-First Search with heuristics
 """
 
 import random
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 from datetime import datetime
 
@@ -44,7 +44,37 @@ class QuestionSelector:
         scored_questions.sort(key=lambda x: x[0], reverse=True)
         
         if scored_questions:
-            selected = scored_questions[0][1]
+            # Create a shallow copy so we don't unexpectedly overwrite the raw KB dictionary
+            selected = scored_questions[0][1].copy()
+            
+            # Feature 4: Dynamic Question Generation
+            try:
+                import streamlit as st
+                if st.session_state.get('ai_enhanced_mode', False):
+                    from utils import call_gemini
+                    
+                    topic = selected.get("topic", "general")
+                    difficulty = selected.get("difficulty", "intermediate")
+                    role = user_profile.get("target_role", "candidate")
+                    concepts = selected.get("concepts", [])
+                    top_concept = concepts[0] if concepts else topic
+                    
+                    prompt = (
+                        f"You are a technical interviewer. Generate exactly ONE interview question "
+                        f"about {topic} at {difficulty} level for a {role} candidate.\n"
+                        f"The question must test understanding of {top_concept}.\n"
+                        f"Return ONLY the question text. No numbering, no explanation, no quotes.\n"
+                        f"Maximum 25 words."
+                    )
+                    
+                    llm_question = call_gemini(prompt, feature_name="Feature 4: Dynamic Question")
+                    if llm_question:
+                        selected["question"] = llm_question
+                        if "question_text" in selected:
+                            selected["question_text"] = llm_question
+            except Exception as e:
+                print("Failed to generate LLM dynamic question:", e)
+                
             # Add to history so it won't be asked again
             if selected.get('id'):
                 self.question_history.append(selected['id'])
@@ -172,34 +202,61 @@ class QuestionSelector:
             return 1.0
     
     def _calculate_weakness_focus(self, question: Dict, previous_answers: List[Dict]) -> float:
-        """Focus on topics where user performed poorly"""
+        """Focus on topics where user performed poorly recently, and move away from topics where user performed well"""
         if not previous_answers:
             return 0.5
-        
-        # Identify weak topics
-        weak_topics = self._identify_weak_topics(previous_answers)
-        
-        # Check if question targets weak topics
+            
         q_topic = question.get("topic", "").lower()
         
-        if q_topic in weak_topics:
-            return 1.0
-        elif any(weak_topic in q_topic for weak_topic in weak_topics):
-            return 0.7
-        else:
-            return 0.3
-    
-    def _identify_weak_topics(self, previous_answers: List[Dict]) -> List[str]:
-        """Identify topics where user scored low"""
-        weak_topics = []
+        # Find the most recent score for this question's topic
+        latest_score = None
+        for answer in reversed(previous_answers):
+            topic = answer.get("topic", "").lower()
+            if topic == q_topic or topic in q_topic or q_topic in topic:
+                latest_score = answer.get("score", 5)
+                break
+                
+        if latest_score is None:
+            # Topic hasn't been tested yet
+            return 0.5
+            
+        # Score goes UP (higher priority) if latest score was bad (< 6)
+        # Score goes DOWN (lower priority) if latest score was good (>= 6)
+        # Latest_score is between 0 and 10.
+        # weakness_focus ranges from 1.0 (for score 0) to 0.0 (for score 10)
+        focus = 1.0 - (latest_score / 10.0)
         
-        for answer in previous_answers:
-            if answer.get("score", 5) < 6:  # Score below 6/10
-                topic = answer.get("topic", "")
-                if topic:
-                    weak_topics.append(topic.lower())
+        # Bound it just in case
+        return max(0.0, min(1.0, focus))
         
-        return list(set(weak_topics))  # Remove duplicates
+    def get_predicted_questions(self, user_profile: Dict, previous_answers: List[Dict], n: int = 3) -> List[Tuple[float, Dict]]:
+        """
+        Returns the top N candidate questions with their heuristic scores.
+        Used for the UI Question Path panel to show the AI's internal decision process.
+        """
+        # Get all candidate questions
+        candidate_questions = self._get_candidate_questions(user_profile)
+        
+        # Filter out already asked questions
+        available_questions = []
+        for q in candidate_questions:
+            q_id = q.get('id')
+            if q_id and q_id not in self.question_history:
+                available_questions.append(q)
+                
+        if not available_questions:
+            return []
+            
+        # Score each available question using heuristic
+        scored_questions = []
+        for q in available_questions:
+            score = self._calculate_heuristic(q, user_profile, previous_answers)
+            scored_questions.append((score, q))
+            
+        # Sort by score (highest first)
+        scored_questions.sort(key=lambda x: x[0], reverse=True)
+        
+        return scored_questions[:n]
     
     def _get_initial_question(self, profile: Dict) -> Optional[Dict]:
         """Get first question based on user profile"""

@@ -65,6 +65,36 @@ class AnswerEvaluator:
             ideal=ideal
         )
         
+        # Feature 2: Human Feedback on Answers
+        try:
+            import streamlit as st
+            if st.session_state.get('ai_enhanced_mode', False):
+                from utils import call_gemini
+                
+                kw = question.get("keywords", [])
+                matched_kw = [k for k in kw if k.lower() in user_answer.lower()]
+                missing = self._find_missing_concepts(user_answer, question.get("concepts", []))
+                
+                prompt = (
+                    f"You are a technical interview coach. The candidate was asked: '{question.get('question', '')}'.\n"
+                    f"They answered: '{user_answer}'.\n"
+                    f"The evaluation system detected they scored {round(total_score, 1)}/10.\n"
+                    f"They mentioned these correct keywords: {', '.join(matched_kw) if matched_kw else 'None'}.\n"
+                    f"They missed these important concepts: {', '.join(missing) if missing else 'None'}.\n"
+                    f"Write 2-3 sentences of constructive coaching feedback. Be specific, "
+                    f"encouraging, and tell them exactly what to add next time. No bullet points."
+                )
+                
+                llm_feedback = call_gemini(prompt, feature_name="Feature 2: Coach Feedback")
+                if llm_feedback:
+                    feedback["llm_feedback"] = llm_feedback
+                else:
+                    feedback["llm_feedback"] = " ".join(feedback["suggestions"])
+            else:
+                feedback["llm_feedback"] = " ".join(feedback["suggestions"])
+        except Exception:
+            feedback["llm_feedback"] = " ".join(feedback["suggestions"])
+        
         return feedback
     
     def _extract_facts(self, text: str) -> List[str]:
