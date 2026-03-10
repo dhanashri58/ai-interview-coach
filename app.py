@@ -1139,38 +1139,54 @@ if st.session_state.interview_active:
             </div>
             """, unsafe_allow_html=True)
 
-            # Part 2 — Instant Suggestion Button
+            # Part 2 — Instant Suggestion Button (real-time generative feedback via Gemini)
             instant_key = f"instant_tip_{last_q_id}"
             if instant_key not in st.session_state:
                 if st.button("💡 Get Instant Coaching Tip", key=f"btn_tip_{last_q_id}"):
-                    with st.spinner("Getting your tip..."):
-                        if st.session_state.get('ai_enhanced_mode', False):
-                            try:
-                                from utils import call_gemini
-                                matched_kw_list = [k for k in last_q_data.get('keywords', []) if k.lower() in ans_lower] if last_q_data else []
-                                missing_c_list = fb.get('missing_concepts', [])
-                                prompt = (
-                                    f"You are a friendly interview coach giving quick real-time advice.\n"
-                                    f"The candidate just answered this interview question: '{last_q}'\n"
-                                    f"Their answer was: '{last_record['answer']}'\n"
-                                    f"They scored {sc}/10.\n"
-                                    f"They correctly mentioned: {matched_kw_list}\n"
-                                    f"They missed these concepts: {missing_c_list}\n\n"
-                                    f"Give ONE specific, actionable tip they can use RIGHT NOW to improve "
-                                    f"this answer if asked again. Start with what they did right in one "
-                                    f"sentence, then give the improvement tip. Maximum 3 sentences total. "
-                                    f"Be conversational and encouraging, like a friend helping you prep. "
-                                    f"No bullet points, no headers."
-                                )
-                                tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
-                                if tip:
-                                    st.session_state[instant_key] = tip
-                                else:
-                                    st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
-                            except Exception:
-                                st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                    with st.spinner("Getting your AI coaching tip..."):
+                        strengths = fb.get("strengths") or []
+                        suggestions = fb.get("suggestions") or []
+                        missing_c_list = fb.get("missing_concepts") or []
+
+                        # Default deterministic fallback in case Gemini is unavailable
+                        did_well = strengths[0] if strengths else "You gave a reasonable starting answer."
+                        if suggestions:
+                            improve_part = suggestions[0]
+                        elif missing_c_list:
+                            improve_part = (
+                                "Next time, make sure you explicitly talk about: "
+                                + ", ".join(missing_c_list[:3])
+                                + "."
+                            )
                         else:
-                            st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                            improve_part = (
+                                "You can make it even stronger by adding one concrete, real-world example "
+                                "from your experience."
+                            )
+                        fallback_tip = f"{did_well} {improve_part}"
+
+                        # Try generative feedback via Gemini (does not depend on ai_enhanced_mode toggle)
+                        try:
+                            from utils import call_gemini
+
+                            prompt = (
+                                "You are a friendly interview coach giving quick real-time advice.\n"
+                                f"The candidate just answered this interview question: '{last_q}'\n"
+                                f"Their answer was: '{last_record['answer']}'\n"
+                                f"They scored {sc}/10.\n"
+                                f"They correctly mentioned: {matched_kw_list}\n"
+                                f"They missed these concepts: {missing_c_list}\n\n"
+                                "Give ONE specific, actionable tip they can use RIGHT NOW to improve "
+                                "this answer if asked again. Start with what they did right in one "
+                                "short sentence, then give the improvement tip. Maximum 3 sentences total. "
+                                "Be conversational and encouraging, like a friend helping you prep. "
+                                "No bullet points, no headers."
+                            )
+
+                            tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
+                            st.session_state[instant_key] = tip or fallback_tip
+                        except Exception:
+                            st.session_state[instant_key] = fallback_tip
                     st.rerun()
             
             if instant_key in st.session_state:
