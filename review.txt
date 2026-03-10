@@ -1,0 +1,72 @@
+AI INTERVIEW COACH – PROGRESS REVIEW
+
+1) Overall process implemented so far
+- A full Streamlit app (`app.py`) runs an end‑to‑end mock interview:
+  - Collects candidate profile (role, experience, skills) and preferences from the sidebar.
+  - Lets the user join a “meeting” with live self‑view (browser `getUserMedia` video) and mic controls.
+  - Guides the candidate through stages: idle → intro → questions → wrap‑up → detailed report.
+  - Records voice answers with `audio_recorder_streamlit`, converts them to text (speech‑to‑text), and stores per‑question results.
+  - After the interview, generates a multi‑tab analytics report (summary, topic stats, question review, learning path, recommendations).
+- All core engines (question selection, evaluation, reporting, planning) are wired into this UI and work together in real time.
+
+2) Algorithms / AI techniques already implemented
+- Classical AI and search:
+  - Breadth‑First Search (BFS): used in `knowledge_base.py` (`explore_topics_bfs`) to traverse topics → difficulties → questions for the “Study Topics (BFS)” view.
+  - Best‑First Search (heuristic question selection): in `question_selector.py` (`QuestionSelector`). Uses a heuristic combining relevance to role, difficulty match, novelty, and weakness‑focus to decide the next question.
+  - Constraint Satisfaction + Backtracking: in `interview_planner_csp.py` (`ConstraintSatisfactionPlanner`). Builds a 10‑question interview plan satisfying constraints on difficulty counts, topic diversity, and uniqueness.
+  - A* Search (A‑star): in `learning_path_astar.py` + `performance_report.py`. Plans an optimal learning path (study modules) to raise all weak topics to a mastery threshold while minimizing total study time.
+
+- Knowledge‑based reasoning and evaluation:
+  - Expert‑style Knowledge Base: `knowledge_base.py` stores topics, difficulties, questions, and ideal answer structures (key points, concepts, examples, common mistakes).
+  - Forward‑Chaining Answer Evaluation: `answer_evaluator.py` (`AnswerEvaluator`) extracts facts from the user’s answer, matches them to ideal key points using similarity, checks keyword and concept coverage, and evaluates examples. This produces a 10‑point score plus strengths, weaknesses, suggestions, missing concepts, and mistakes.
+
+- Generative AI (Gemini):
+  - Central Gemini wrapper in `utils.py` (`call_gemini`) with configured models.
+  - Used for:
+    - Dynamic, personalized intro and closing messages in `app.py`.
+    - Optional dynamic question re‑phrasing / generation in `question_selector.py`.
+    - Per‑answer coaching feedback in `answer_evaluator.py`.
+    - An “Instant Coaching Tip” button in `app.py`.
+    - Narrative summaries in the final performance report in `performance_report.py`.
+
+- Voice & multimedia (supporting AI UX):
+  - Speech‑to‑Text: implemented via `speech_recognition` in `utils.py` and wired from `app.py`.
+  - Text‑to‑Speech: async `edge‑tts` (with `gTTS` fallback) in `utils.py`, streaming synthesized speech back to the browser as playable audio for all AI prompts.
+
+3) What is completed vs. still limited
+- Completed / stable:
+  - End‑to‑end interview flow (from profile to final report) in `app.py`.
+  - Question bank and knowledge base structure for multiple topics and difficulty levels.
+  - BFS topic explorer, Best‑First question selector, CSP interview planner, and A* learning path planner.
+  - Forward‑chaining‑style answer evaluator with structured scoring and feedback.
+  - Integration of Gemini for enhanced explanations, dynamic questions, and report summaries.
+  - Real‑time audio pipeline: record → STT → evaluation → TTS playback.
+
+- Implemented but limited:
+  - Ideal answer templates (with detailed key points, examples, and mistakes) are fully defined only for a small subset of questions (e.g., a few Python basics). All other questions fall back to a more generic ideal answer, so their evaluation is less rich.
+  - Session save/load helpers exist in `utils.py`, but there is no full UI flow for persisting and restoring interviews across app runs.
+
+4) Planned / conceptual algorithms still remaining (from docs)
+- PROLOG‑based knowledge base:
+  - `requirements.txt` mentions optional `pyswip`, and `SOFTWARE_UNDERSTANDING.md` suggests migrating the knowledge base to PROLOG for a more classical expert system. No PROLOG integration or queries are implemented yet.
+
+- Richer logic formalisms:
+  - First‑Order Logic (FOL) rules for deeper reasoning about answers are described in the documentation, but the current code uses heuristic string similarity and keyword checks rather than a full FOL engine.
+
+- Advanced planning and game‑search ideas:
+  - STRIPS / Goal‑Stack Planning for modelling the whole interview as a sequence of actions is mentioned as a future possibility but is not implemented.
+  - Minimax with Alpha‑Beta pruning to simulate an “adversarial interviewer” that picks the hardest valid questions is proposed conceptually but not present in the current code.
+
+5) High‑level remaining work / extension ideas
+- Expand the knowledge base:
+  - Add more questions and, importantly, rich ideal answer structures (key points, concepts, examples, common mistakes) for many more question IDs so the evaluator can give more precise feedback.
+
+- Integrate formal logic / PROLOG:
+  - Replace or augment the Python dict‑based knowledge base with a PROLOG representation, and connect it using `pyswip` to demonstrate genuine logic‑programming inference.
+
+- Enhance planning / game AI:
+  - Experiment with STRIPS‑style interview planning and a Minimax/Alpha‑Beta mode for more challenging, adversarial interview sessions.
+
+- Persistence and UX polish:
+  - Build full UI support for saving/loading interviews, tracking long‑term progress, and possibly logging to a real database instead of only in‑memory/session storage.
+
