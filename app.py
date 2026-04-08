@@ -403,6 +403,7 @@ def init_session_state():
         # ── new planning state ──
         st.session_state.strips_planner      = None
         st.session_state.prolog_kb           = None
+        st.session_state.planned_questions   = []
         # ── user profile ──
         st.session_state.user_profile       = {}
 
@@ -438,16 +439,59 @@ def reset_interview():
     st.session_state.interview_start_time = None
     st.session_state.mic_muted           = False
     st.session_state.cam_off             = False
+    st.session_state.planned_questions   = []
+    st.session_state.strips_planner      = None
+    st.session_state.prolog_kb           = None
     # Reset selector history so questions restart cleanly
     st.session_state.selector.reset_history()
     # Clear wrapup flag so next session starts fresh
-    for key in ['wrapup_started', 'intro_message', 'instant_feedback']:
+    for key in ['wrapup_started', 'intro_message', 'instant_feedback', 'wumpus_world', 'minimax']:
         if key in st.session_state:
             del st.session_state[key]
 
 # ---------------------------------------------------------------------------
 # HELPER — process a submitted answer (voice or text)
 # ---------------------------------------------------------------------------
+def start_interview_session():
+    """Start a new interview using one shared bootstrap path."""
+    profile = st.session_state.user_profile
+    if not profile or not profile.get("profile_complete"):
+        return False, "Please complete and save your profile first."
+
+    reset_interview()
+
+    first_q = None
+    if st.session_state.get("csp_toggle"):
+        planner = ConstraintSatisfactionPlanner(st.session_state.kb)
+        planned = planner.generate_interview_plan()
+        if planned:
+            st.session_state.planned_questions = planned
+            first_q = st.session_state.planned_questions.pop(0)
+        else:
+            st.warning("CSP planner could not build a valid 10-question plan. Falling back to dynamic selection.")
+
+    if not first_q:
+        first_q = st.session_state.selector.select_next_question(profile, [])
+
+    if not first_q:
+        return False, "No interview questions are available for the current profile. Please adjust the selected skills and try again."
+
+    st.session_state.current_question = first_q
+    st.session_state.interview_active = True
+    st.session_state.interview_stage = 'intro'
+    st.session_state.interview_start_time = datetime.now()
+
+    initial_state = {"session_started"}
+    goal_state = {"session_closed", "report_generated", "advanced_assessed"}
+    st.session_state.strips_planner = GoalStackPlanner(initial_state, goal_state, get_strips_actions())
+    st.session_state.strips_planner.plan_interview()
+
+    if st.session_state.get("prolog_kb_toggle"):
+        st.session_state.prolog_kb = PrologKnowledgeBase()
+
+    return True, None
+
+
 def process_answer(answer_text: str):
     """
     Evaluate the given answer text, store the record, advance to the next
@@ -482,15 +526,17 @@ def process_answer(answer_text: str):
 
     total_q = 10   # configurable interview length
     if len(st.session_state.answer_history) < total_q:
-        skills_str = ", ".join(st.session_state.user_profile.get("skills", []))
         role = st.session_state.user_profile.get("target_role", "Software Engineer")
-        level_exp = st.session_state.user_profile.get("experience_level", "entry")
         
         # Algorithm Selection Logic
         next_q = None
+
+        # 0. Pre-planned syllabus path
+        if st.session_state.get("csp_toggle") and st.session_state.get("planned_questions"):
+            next_q = st.session_state.planned_questions.pop(0)
         
         # 1. Wumpus World Mode
-        if st.session_state.get("wumpus_mode"):
+        if not next_q and st.session_state.get("wumpus_mode"):
             if 'wumpus_world' not in st.session_state:
                 from wumpus_interview import WumpusInterviewWorld
                 st.session_state.wumpus_world = WumpusInterviewWorld(st.session_state.kb.get_all_questions(), st.session_state.user_profile)
@@ -506,7 +552,7 @@ def process_answer(answer_text: str):
                     st.toast("💀 Wumpus Attack! Tricky question ahead.", icon="🔥")
         
         # 2. Adversarial Mode (Minimax)
-        elif st.session_state.get("ai_adversarial_mode"):
+        elif not next_q and st.session_state.get("ai_adversarial_mode"):
             if 'minimax' not in st.session_state:
                 from minimax_selector import MinimaxQuestionSelector
                 st.session_state.minimax = MinimaxQuestionSelector(st.session_state.kb)
@@ -538,12 +584,16 @@ def process_answer(answer_text: str):
                 if dynamic_q:
                     next_q["question"] = dynamic_q
 
-        st.session_state.current_question = next_q
-        st.session_state.last_played_q_id = None   # triggers TTS for new question
-
         # Update STRIPS State
         if st.session_state.strips_planner:
             update_state_from_answers(st.session_state.strips_planner, st.session_state.answer_history)
+
+        if next_q:
+            st.session_state.current_question = next_q
+            st.session_state.last_played_q_id = None   # triggers TTS for new question
+        else:
+            st.session_state.interview_stage = 'wrapup'
+            st.session_state.current_question = None
     else:
         # All questions done → wrapup stage
         st.session_state.interview_stage = 'wrapup'
@@ -673,43 +723,11 @@ with st.sidebar:
             st.checkbox("⚡ Enable AI-Enhanced Mode (Gemini)", value=False, key="ai_enhanced_mode")
             
             if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
-                if st.session_state.user_profile:
-                    reset_interview()
-                    
-                    if st.session_state.get("csp_toggle"):
-                        planner = ConstraintSatisfactionPlanner(st.session_state.kb)
-                        planned = planner.generate_interview_plan()
-                        if not planned:
-                            st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
-                            import time; time.sleep(2.5)
-                            first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
-                            st.session_state.planned_questions = []
-                        else:
-                            st.session_state.planned_questions = planned
-                            first_q = st.session_state.planned_questions.pop(0)
-                    else:
-                        first_q = st.session_state.selector.select_next_question(
-                            st.session_state.user_profile, []
-                        )
-                        
-                    st.session_state.current_question    = first_q
-                    st.session_state.interview_active    = True
-                    st.session_state.interview_stage     = 'intro'
-                    st.session_state.interview_start_time = datetime.now()
-
-                    # Initialize STRIPS Planner
-                    initial_state = {"session_started"}
-                    goal_state = {"session_closed", "report_generated", "advanced_assessed"}
-                    st.session_state.strips_planner = GoalStackPlanner(initial_state, goal_state, get_strips_actions())
-                    st.session_state.strips_planner.plan_interview()
-                    
-                    # Initialize Prolog KB if toggled
-                    if st.session_state.get("prolog_kb_toggle"):
-                        st.session_state.prolog_kb = PrologKnowledgeBase()
-
+                started, message = start_interview_session()
+                if started:
                     st.rerun()
                 else:
-                    st.warning("⚠️ Please complete and save your profile first!")
+                    st.warning(message)
 
         if st.session_state.interview_active:
             if st.button("⏹️ END INTERVIEW EARLY", use_container_width=True):
@@ -824,31 +842,11 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
     _, c_btn1, c_btn2, _ = st.columns([1, 2, 2, 1])
     with c_btn1:
         if st.button("🎤 START INTERVIEW", use_container_width=True, type="primary"):
-            if st.session_state.user_profile:
-                reset_interview()
-                
-                if st.session_state.get("csp_toggle"):
-                    planner = ConstraintSatisfactionPlanner(st.session_state.kb)
-                    planned = planner.generate_interview_plan()
-                    if not planned:
-                        st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
-                        first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
-                        st.session_state.planned_questions = []
-                    else:
-                        st.session_state.planned_questions = planned
-                        first_q = st.session_state.planned_questions.pop(0)
-                else:
-                    first_q = st.session_state.selector.select_next_question(
-                        st.session_state.user_profile, []
-                    )
-                    
-                st.session_state.current_question    = first_q
-                st.session_state.interview_active    = True
-                st.session_state.interview_stage     = 'intro'
-                st.session_state.interview_start_time = datetime.now()
+            started, message = start_interview_session()
+            if started:
                 st.rerun()
             else:
-                st.warning("Please complete your profile in the sidebar first!")
+                st.warning(message)
 
     with c_btn2:
         if st.button("📊 VIEW DEMO REPORT", use_container_width=True):
