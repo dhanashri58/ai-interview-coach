@@ -472,14 +472,37 @@ with st.sidebar:
                 f"Signed in as {st.session_state.current_user.get('name')} "
                 f"({st.session_state.current_user.get('email')})"
             )
-            if st.button("🚪 Logout", use_container_width=True):
+            if st.session_state.current_user.get("is_admin"):
+                st.caption("Admin access enabled")
+
+            with st.expander("Change password", expanded=False):
+                with st.form("change_password_form"):
+                    cur_pw = st.text_input("Current password", type="password", key="chg_cur")
+                    new_pw = st.text_input("New password (min 8 chars)", type="password", key="chg_new")
+                    new_pw2 = st.text_input("Confirm new password", type="password", key="chg_new2")
+                    if st.form_submit_button("Update password", use_container_width=True):
+                        if new_pw != new_pw2:
+                            st.error("New passwords do not match.")
+                        elif not st.session_state.db_ready:
+                            st.error("Database not ready.")
+                        else:
+                            ok_chg, msg_chg = st.session_state.mysql_store.change_password(
+                                st.session_state.current_user["id"], cur_pw, new_pw
+                            )
+                            if ok_chg:
+                                st.success(msg_chg)
+                            else:
+                                st.error(msg_chg)
+
+            if st.button("Logout", use_container_width=True):
                 reset_interview()
                 st.session_state.authenticated = False
                 st.session_state.current_user = None
                 st.session_state.user_profile = {}
                 st.rerun()
+
         else:
-            login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+            login_tab, signup_tab, reset_tab = st.tabs(["Login", "Sign Up", "Reset password"])
 
             with login_tab:
                 with st.form("login_form", clear_on_submit=False):
@@ -511,8 +534,8 @@ with st.sidebar:
                     signup_password = st.text_input("Password", type="password", key="signup_password")
                     signup_submit = st.form_submit_button("Create Account", use_container_width=True)
                     if signup_submit:
-                        if len(signup_password) < 6:
-                            st.error("Password must be at least 6 characters.")
+                        if len(signup_password) < 8:
+                            st.error("Password must be at least 8 characters.")
                         elif not st.session_state.db_ready:
                             st.error("Database not ready. Check MYSQL configuration.")
                         else:
@@ -523,6 +546,43 @@ with st.sidebar:
                                 st.success(msg + " Please login.")
                             else:
                                 st.error(msg)
+
+            with reset_tab:
+                st.caption(
+                    "Request a one-time token (valid 1 hour), then set a new password. "
+                    "In production, email the token instead of showing it here."
+                )
+                with st.form("reset_request_form"):
+                    r_email = st.text_input("Your account email", key="reset_req_email")
+                    r_req = st.form_submit_button("Request reset token", use_container_width=True)
+                    if r_req:
+                        if not st.session_state.db_ready:
+                            st.error("Database not ready.")
+                        else:
+                            ok_t, token, msg_t = st.session_state.mysql_store.request_password_reset(r_email)
+                            st.info(msg_t)
+                            if ok_t and token:
+                                st.code(token, language=None)
+
+                with st.form("reset_complete_form"):
+                    c_email = st.text_input("Email", key="reset_cmp_email")
+                    c_token = st.text_input("Reset token", key="reset_cmp_token")
+                    c_pw = st.text_input("New password (min 8)", type="password", key="reset_cmp_pw")
+                    c_pw2 = st.text_input("Confirm new password", type="password", key="reset_cmp_pw2")
+                    c_sub = st.form_submit_button("Set new password", use_container_width=True)
+                    if c_sub:
+                        if c_pw != c_pw2:
+                            st.error("Passwords do not match.")
+                        elif not st.session_state.db_ready:
+                            st.error("Database not ready.")
+                        else:
+                            ok_r, msg_r = st.session_state.mysql_store.complete_password_reset(
+                                c_email, c_token, c_pw
+                            )
+                            if ok_r:
+                                st.success(msg_r)
+                            else:
+                                st.error(msg_r)
 
     if st.session_state.authenticated and st.session_state.db_ready and st.session_state.current_user:
         recent_sessions = st.session_state.mysql_store.get_recent_interviews(
@@ -536,6 +596,45 @@ with st.sidebar:
                         f"| Questions: {sess.get('total_questions', 0)} "
                         f"| Level: {sess.get('performance_level') or '-'}"
                     )
+
+        if st.session_state.current_user.get("is_admin"):
+            with st.expander("Admin — all users & interview reports", expanded=False):
+                users_adm = st.session_state.mysql_store.list_users_admin()
+                if not users_adm:
+                    st.write("No users in database.")
+                else:
+                    user_labels = {}
+                    for u in users_adm:
+                        lbl = f"{u['id']}: {u['full_name']} <{u['email']}>"
+                        if u.get("is_admin"):
+                            lbl += " (admin)"
+                        user_labels[lbl] = u['id']
+                    pick_u = st.selectbox("User", options=list(user_labels.keys()), key="admin_pick_user")
+                    sel_uid = user_labels[pick_u]
+                    sessions_adm = st.session_state.mysql_store.list_interview_sessions_for_user(sel_uid)
+                    if not sessions_adm:
+                        st.info("No interview sessions for this user.")
+                    else:
+                        sess_labels = {}
+                        for s in sessions_adm:
+                            has_r = "yes" if s.get("has_report") else "no"
+                            sl = (
+                                f"#{s['id']} · {s['started_at']} · score {s.get('overall_score') or '—'} · "
+                                f"Qs {s.get('total_questions', 0)} · report {has_r}"
+                            )
+                            sess_labels[sl] = s['id']
+                        pick_s = st.selectbox(
+                            "Interview session", options=list(sess_labels.keys()), key="admin_pick_sess"
+                        )
+                        sel_sid = sess_labels[pick_s]
+                        rep_adm = st.session_state.mysql_store.get_session_report_json(sel_sid)
+                        if rep_adm:
+                            st.subheader(f"Stored report — session #{sel_sid}")
+                            st.json(rep_adm)
+                        else:
+                            st.warning(
+                                "No finished report JSON for this session (in progress or ended early)."
+                            )
 
     # ── Profile form ──
     # ── Profile form ──

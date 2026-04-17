@@ -6,14 +6,23 @@ import hashlib
 import json
 import os
 import secrets
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
-import mysql.connector
+try:
+    import mysql.connector
+except ImportError:
+    mysql = None
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+BCRYPT_SALT_MARKER = "bcrypt"
 
 
 class MySQLStore:
@@ -26,6 +35,8 @@ class MySQLStore:
         self.enabled = os.getenv("MYSQL_ENABLED", "true").lower() == "true"
 
     def _connect(self, with_database: bool = True):
+        if mysql is None:
+            raise RuntimeError("mysql-connector-python is not installed")
         config = {
             "host": self.host,
             "port": self.port,
@@ -36,7 +47,40 @@ class MySQLStore:
             config["database"] = self.database
         return mysql.connector.connect(**config)
 
+    def _migrate_schema(self, cursor) -> None:
+        """Best-effort migrations for existing databases."""
+        try:
+            cursor.execute(
+                "ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) NOT NULL"
+            )
+        except Exception:
+            pass
+        try:
+            cursor.execute(
+                """
+                ALTER TABLE users ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0
+                """
+            )
+        except Exception:
+            pass
+
+    def _bootstrap_admins(self, cursor, conn) -> None:
+        raw = os.getenv("ADMIN_EMAILS", "").strip()
+        if not raw:
+            return
+        emails = [e.strip().lower() for e in raw.split(",") if e.strip()]
+        for email in emails:
+            cursor.execute(
+                "UPDATE users SET is_admin = 1 WHERE email = %s",
+                (email,),
+            )
+        conn.commit()
+
     def initialize(self) -> Tuple[bool, str]:
+        if mysql is None:
+            return False, "MySQL connector missing. Install with: pip install mysql-connector-python"
+        if bcrypt is None:
+            return False, "bcrypt missing. Install with: pip install bcrypt"
         if not self.enabled:
             return False, "MySQL disabled via MYSQL_ENABLED=false"
         try:
@@ -54,12 +98,14 @@ class MySQLStore:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     full_name VARCHAR(120) NOT NULL,
                     email VARCHAR(160) NOT NULL UNIQUE,
-                    password_hash VARCHAR(64) NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
                     password_salt VARCHAR(64) NOT NULL,
+                    is_admin TINYINT(1) NOT NULL DEFAULT 0,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            self._migrate_schema(cursor)
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -106,7 +152,23 @@ class MySQLStore:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    token_hash CHAR(64) NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    used_at DATETIME NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    INDEX idx_token_hash (token_hash),
+                    INDEX idx_expires (expires_at)
+                )
+                """
+            )
             conn.commit()
+            self._bootstrap_admins(cursor, conn)
             cursor.close()
             conn.close()
             return True, "MySQL connection ready"
@@ -114,12 +176,32 @@ class MySQLStore:
             return False, f"MySQL initialization failed: {exc}"
 
     @staticmethod
-    def _hash_password(password: str, salt: str) -> str:
+    def _hash_password_legacy(password: str, salt: str) -> str:
         return hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
 
+    def _hash_password_bcrypt(self, password: str) -> str:
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    def _set_password_bcrypt(self, user_id: int, plain_password: str) -> None:
+        conn = self._connect()
+        cursor = conn.cursor()
+        ph = self._hash_password_bcrypt(plain_password)
+        cursor.execute(
+            """
+            UPDATE users SET password_hash=%s, password_salt=%s WHERE id=%s
+            """,
+            (ph, BCRYPT_SALT_MARKER, user_id),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
     def create_user(self, full_name: str, email: str, password: str) -> Tuple[bool, str]:
-        salt = secrets.token_hex(16)
-        password_hash = self._hash_password(password, salt)
+        if bcrypt is None:
+            return False, "bcrypt not installed"
+        if len(password) < 8:
+            return False, "Password must be at least 8 characters."
+        ph = self._hash_password_bcrypt(password)
         try:
             conn = self._connect()
             cursor = conn.cursor()
@@ -128,7 +210,7 @@ class MySQLStore:
                 INSERT INTO users (full_name, email, password_hash, password_salt)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (full_name.strip(), email.strip().lower(), password_hash, salt),
+                (full_name.strip(), email.strip().lower(), ph, BCRYPT_SALT_MARKER),
             )
             conn.commit()
             cursor.close()
@@ -139,12 +221,28 @@ class MySQLStore:
         except Exception as exc:
             return False, f"Signup failed: {exc}"
 
+    def _password_matches_row(self, row: Dict, password: str) -> bool:
+        salt = row.get("password_salt") or ""
+        stored = row["password_hash"]
+        if salt == BCRYPT_SALT_MARKER:
+            try:
+                return bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
+            except Exception:
+                return False
+        calc = self._hash_password_legacy(password, salt)
+        return calc == stored
+
     def authenticate_user(self, email: str, password: str) -> Tuple[bool, Optional[Dict], str]:
+        if bcrypt is None:
+            return False, None, "bcrypt not installed"
         try:
             conn = self._connect()
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                "SELECT id, full_name, email, password_hash, password_salt FROM users WHERE email=%s",
+                """
+                SELECT id, full_name, email, password_hash, password_salt, is_admin
+                FROM users WHERE email=%s
+                """,
                 (email.strip().lower(),),
             )
             row = cursor.fetchone()
@@ -153,17 +251,119 @@ class MySQLStore:
             if not row:
                 return False, None, "No account found for this email"
 
-            calc_hash = self._hash_password(password, row["password_salt"])
-            if calc_hash != row["password_hash"]:
+            if not self._password_matches_row(row, password):
                 return False, None, "Invalid password"
 
+            salt = row.get("password_salt") or ""
+            if salt != BCRYPT_SALT_MARKER:
+                self._set_password_bcrypt(row["id"], password)
+
+            is_admin = bool(row.get("is_admin"))
             return True, {
                 "id": row["id"],
                 "name": row["full_name"],
                 "email": row["email"],
+                "is_admin": is_admin,
             }, "Login successful"
         except Exception as exc:
             return False, None, f"Login failed: {exc}"
+
+    def change_password(
+        self, user_id: int, current_password: str, new_password: str
+    ) -> Tuple[bool, str]:
+        if len(new_password) < 8:
+            return False, "New password must be at least 8 characters."
+        conn = self._connect()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, password_hash, password_salt FROM users WHERE id=%s
+            """,
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if not row or not self._password_matches_row(row, current_password):
+            return False, "Current password is incorrect."
+        self._set_password_bcrypt(user_id, new_password)
+        return True, "Password updated."
+
+    def request_password_reset(self, email: str) -> Tuple[bool, Optional[str], str]:
+        """Create a reset token. Returns (ok, plaintext_token, message). Token shown once in UI."""
+        email_l = email.strip().lower()
+        conn = self._connect()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM users WHERE email=%s", (email_l,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return (
+                True,
+                None,
+                "If this email is registered, a one-time token will appear after you request a reset.",
+            )
+        user_id = row["id"]
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires = datetime.now() + timedelta(hours=1)
+        cursor.execute(
+            """
+            INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+            VALUES (%s, %s, %s)
+            """,
+            (user_id, token_hash, expires.strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True, token, "Use the token below with your email to set a new password (valid 1 hour)."
+
+    def complete_password_reset(
+        self, email: str, token: str, new_password: str
+    ) -> Tuple[bool, str]:
+        if len(new_password) < 8:
+            return False, "Password must be at least 8 characters."
+        email_l = email.strip().lower()
+        token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+        conn = self._connect()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM users WHERE email=%s", (email_l,))
+        urow = cursor.fetchone()
+        if not urow:
+            cursor.close()
+            conn.close()
+            return False, "Invalid email or token."
+        user_id = urow["id"]
+        cursor.execute(
+            """
+            SELECT id FROM password_reset_tokens
+            WHERE user_id=%s AND token_hash=%s AND used_at IS NULL AND expires_at > NOW()
+            ORDER BY id DESC LIMIT 1
+            """,
+            (user_id, token_hash),
+        )
+        trow = cursor.fetchone()
+        if not trow:
+            cursor.close()
+            conn.close()
+            return False, "Invalid or expired token."
+        tid = trow["id"]
+        ph = self._hash_password_bcrypt(new_password)
+        cursor.execute(
+            """
+            UPDATE users SET password_hash=%s, password_salt=%s WHERE id=%s
+            """,
+            (ph, BCRYPT_SALT_MARKER, user_id),
+        )
+        cursor.execute(
+            "UPDATE password_reset_tokens SET used_at=NOW() WHERE id=%s", (tid,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True, "Password reset successful. You can log in now."
 
     def get_profile(self, user_id: int) -> Optional[Dict]:
         try:
@@ -332,3 +532,64 @@ class MySQLStore:
             return rows or []
         except Exception:
             return []
+
+    def list_users_admin(self) -> List[Dict[str, Any]]:
+        try:
+            conn = self._connect()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, full_name, email, is_admin, created_at
+                FROM users
+                ORDER BY id ASC
+                """
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            return rows or []
+        except Exception:
+            return []
+
+    def list_interview_sessions_for_user(self, user_id: int) -> List[Dict[str, Any]]:
+        try:
+            conn = self._connect()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, user_id, started_at, ended_at, total_questions,
+                       overall_score, performance_level,
+                       (report_json IS NOT NULL AND LENGTH(report_json) > 0) AS has_report
+                FROM interview_sessions
+                WHERE user_id=%s
+                ORDER BY started_at DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            return rows or []
+        except Exception:
+            return []
+
+    def get_session_report_json(self, session_id: int) -> Optional[Dict[str, Any]]:
+        try:
+            conn = self._connect()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, user_id, started_at, ended_at, report_json
+                FROM interview_sessions
+                WHERE id=%s
+                """,
+                (session_id,),
+            )
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if not row or not row.get("report_json"):
+                return None
+            return json.loads(row["report_json"])
+        except Exception:
+            return None
