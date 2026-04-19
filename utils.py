@@ -13,44 +13,44 @@ from typing import List, Dict, Any, Optional
 import os
 from dotenv import load_dotenv
 
-import google.generativeai as genai
+from google import genai
 
 import time
 
-# Load env variables and configure Gemini
 load_dotenv()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
 
-GEMINI_MODEL = "gemini-3.1-flash-lite"
-GEMINI_FALLBACK = "gemini-2.5-flash-lite"
+client = None
+if gemini_api_key:
+    client = genai.Client(api_key=gemini_api_key)
+
+GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_FALLBACK = "gemini-1.5-flash"
 
 def call_gemini(prompt: str, feature_name: str = "Unknown") -> Optional[str]:
     """
-    Safely calls Gemini API. Returns None if feature is off, 
-    API key is missing, or an error occurs.
+    Safely calls Gemini API using the new google-genai SDK.
     """
-    # Check if AI mode is toggled on in session state
-    if not st.session_state.get('ai_enhanced_mode', False):
+    if not client:
         return None
         
-    if not gemini_api_key:
-        return None
-        
-    # Rate limit protection (Feature 2)
+    # Rate limit protection
     time.sleep(0.5)
         
     try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
         print(f"[Gemini] Called successfully | Model: {GEMINI_MODEL} | Feature: {feature_name}")
         return response.text.strip()
     except Exception as e:
         print(f"[Gemini] {GEMINI_MODEL} failed for {feature_name}: {e}. Trying fallback...")
         try:
-            model = genai.GenerativeModel(GEMINI_FALLBACK)
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_FALLBACK,
+                contents=prompt
+            )
             print(f"[Gemini] Called successfully | Model: {GEMINI_FALLBACK} | Feature: {feature_name}")
             return response.text.strip()
         except Exception as fallback_e:
@@ -602,5 +602,96 @@ def get_success_animation():
         <div class="glow" style="width: 100%; height: 4px; background: #10b981; border-radius: 2px; margin: 1rem 0;">
             <div style="width: 100%; height: 100%; background: #10b981; border-radius: 2px;" class="pulse"></div>
         </div>
+    </div>
+    """
+def get_stepper_html(total_questions: int, current_index: int) -> str:
+    """Returns the glassmorphism horizontal progress stepper HTML."""
+    dots = []
+    for i in range(total_questions):
+        if i < current_index:
+            classes = "step-dot completed"
+        elif i == current_index:
+            classes = "step-dot active"
+        else:
+            classes = "step-dot"
+        dots.append(f'<div class="{classes}"></div>')
+        
+    return f"""
+    <div class="stepper">
+        {''.join(dots)}
+    </div>
+    """
+
+def get_meet_control_bar() -> str:
+    """Returns the Google Meet-style control bar."""
+    return """
+    <div class="control-bar">
+        <div class="ctrl-btn" title="Toggle Mic">🎙️</div>
+        <div class="ctrl-btn" title="Toggle Camera">📹</div>
+        <div class="ctrl-btn" title="Settings">⚙️</div>
+        <div class="ctrl-btn ctrl-danger" title="End Call">📞</div>
+    </div>
+    """
+
+def get_waveform_animation() -> str:
+    """Returns a CSS animated audio waveform."""
+    return """
+    <div class="waveform">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+    </div>
+    """
+
+def get_score_ring(score: float, max_score: float = 10.0, size: int = 120) -> str:
+    """
+    Returns an animated circular progress ring specifically for the score.
+    Animates counting up to the final score using CSS variables.
+    """
+    percentage = (score / max_score) * 100
+    circumference = 2 * 3.14159 * 45
+    offset = circumference - (percentage / 100) * circumference
+    
+    color = "#00d4aa" if score >= 7 else "#f59e0b" if score >= 5 else "#ff4757"
+    
+    return f"""
+    <div style="position:relative; width:{size}px; height:{size}px; margin: 0 auto;">
+        <svg width="{size}" height="{size}" viewBox="0 0 100 100" style="transform: rotate(-90deg);">
+            <!-- Background circle -->
+            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <!-- Animated progress circle -->
+            <circle cx="50" cy="50" r="45" fill="none" stroke="{color}" stroke-width="8"
+                    stroke-dasharray="{circumference}" stroke-dashoffset="{circumference}"
+                    stroke-linecap="round">
+                <animate attributeName="stroke-dashoffset" 
+                         from="{circumference}" to="{offset}" 
+                         dur="1.5s" fill="freeze" calcMode="spline" keySplines="0.1 0.8 0.2 1"/>
+            </circle>
+        </svg>
+        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); text-align:center;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:1.8rem; font-weight:700; color:{color};">{score}</div>
+            <div style="font-size:0.6rem; color:var(--text-secondary); text-transform:uppercase;">/ {max_score}</div>
+        </div>
+    </div>
+    """
+    
+def display_question_card(question_idx: int, difficulty: str, topic: str, text: str):
+    """Generates the styled glassmorphism question card."""
+    diff_class = f"q-card-{difficulty.lower()}"
+    return f"""
+    <div class="q-card {diff_class}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <span style="font-family:'Space Grotesk',sans-serif; color:var(--accent-2); font-weight:600; font-size:0.9rem;">
+                Question {question_idx}
+            </span>
+            <span style="background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:12px; font-size:0.75rem;">
+                {topic.upper()} • {difficulty.upper()}
+            </span>
+        </div>
+        <p style="font-size:1.15rem; line-height:1.6; font-weight:400; color:white; margin:0;">
+            {text}
+        </p>
     </div>
     """

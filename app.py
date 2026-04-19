@@ -56,7 +56,7 @@ st.markdown("""
     <div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.85rem;">
         <p style="margin:0;">🎯 AI Interview Coach — Professional Edition</p>
         <p style="font-size:0.78rem; margin-top:0.4rem;">
-            Powered by Best-First Search · Forward-Chaining Evaluation<br>
+            Powered by Best-First Search · Forward-Chaining Evaluation · FOL Engine · STRIPS Planner<br>
             Built with ❤️ for serious interview preparation
         </p>
     </div>

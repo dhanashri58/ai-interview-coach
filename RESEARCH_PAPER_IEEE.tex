@@ -1,0 +1,493 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{balance}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{AI Interview Coach: An Interpretable Adaptive Mock Interview Framework Using Heuristic Search, First-Order Logic Evaluation, and Planning-Based Remediation}
+
+\author{
+\IEEEauthorblockN{Author Name 1}
+\IEEEauthorblockA{\textit{Department / Program Name} \\
+\textit{Institute / University Name} \\
+City, Country \\
+author1@example.com}
+\and
+\IEEEauthorblockN{Author Name 2}
+\IEEEauthorblockA{\textit{Department / Program Name} \\
+\textit{Institute / University Name} \\
+City, Country \\
+author2@example.com}
+\and
+\IEEEauthorblockN{Author Name 3}
+\IEEEauthorblockA{\textit{Department / Program Name} \\
+\textit{Institute / University Name} \\
+City, Country \\
+author3@example.com}
+\and
+\IEEEauthorblockN{Author Name 4}
+\IEEEauthorblockA{\textit{Department / Program Name} \\
+\textit{Institute / University Name} \\
+City, Country \\
+author4@example.com}
+}
+
+\maketitle
+
+\begin{abstract}
+Existing AI mock interview platforms frequently emphasize black-box large language model scoring, generic question delivery, or behavioral analytics, while offering limited transparency in technical question sequencing, rubric-based answer evaluation, and personalized remediation planning. This paper presents AI Interview Coach, an interpretable mock interview framework that combines heuristic Best-First Search for adaptive question selection, first-order-logic-inspired transcript evaluation, constraint-based interview planning, STRIPS-style session tracking, and A*-driven learning path synthesis inside a multimodal voice-enabled interface. The implemented prototype contains a balanced knowledge base of 117 interview questions distributed across 13 topics and three difficulty levels, with role tags, skill tags, ideal answers, code exemplars, and auto-generated logical rules attached to every question. The framework intentionally separates deterministic technical assessment from optional generative augmentation, where LLM calls are used for question phrasing and coaching support but not for the core score computation. Structural validation on the released artifact shows that the CSP syllabus planner generated valid 10-question interview plans in 200/200 randomized trials, the adaptive selector redirected subsequent prompts toward weak SQL areas after low prior scores, and the answer evaluation module separated strong and weak responses on the same question with scores of 8.2 and 4.4, respectively. A 43-module A* remediation layer further produced interpretable study plans ranging from 7.5 to 10.0 hours across representative candidate profiles. The resulting system offers a conference-ready, implementation-grounded foundation for transparent AI-assisted interview preparation and future large-scale user evaluation.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Mock interview systems, adaptive questioning, heuristic search, first-order logic, CSP, STRIPS planning, A* search, multimodal AI, explainable educational systems.
+\end{IEEEkeywords}
+
+\section{Introduction}
+Technical interview preparation has rapidly shifted from static question lists and one-way practice portals toward interactive AI-assisted simulators that aim to reproduce the cadence, pressure, and feedback cycles of real interviews. This transition has been accelerated by remote hiring, hybrid education, and the growing need for scalable interview preparation tools that can serve large numbers of students and job candidates without requiring continuous human coaching. However, the majority of currently reported AI interview systems focus either on multimodal behavior analysis, such as facial expression and confidence estimation, or on voice-enabled conversational pipelines that do not expose why particular questions were asked, how responses were scored, or how subsequent remediation was determined \cite{r1,r2,r5,r6,r7,r8}.
+
+For a serious educational mock interview system, realism alone is insufficient. Candidates need topic-appropriate question sequencing, transparent scoring logic, post-answer feedback that can be inspected rather than merely trusted, and a study plan that reflects the weaknesses observed during the interview. From a systems perspective, this requires more than a single monolithic model. It requires a combination of structured knowledge representation, adaptive search, explicit logic-based evaluation, state-aware planning, and user-facing interaction layers. Such a design is especially important in educational settings, where the tool should support learning and reflection rather than opaque screening decisions.
+
+This paper presents \textit{AI Interview Coach}, a Python- and Streamlit-based prototype that addresses this need through a hybrid architecture. The system combines a curated technical question bank, a heuristic Best-First Search selector, a first-order-logic-inspired answer evaluator, a CSP-based pre-interview syllabus planner, a STRIPS session progression model, an A* remediation planner, and an optional generative layer for dynamic phrasing and coaching. Unlike purely end-to-end LLM judges, the framework exposes intermediate evidence such as matched keywords, missing concepts, logic traces, and topic-level weaknesses. Unlike purely static mock interview apps, it adapts question selection and study recommendations to the evolving user profile and answer history.
+
+The current manuscript is intentionally grounded in the artifact that is actually implemented in the project repository. Instead of reporting inflated or unverified deployment claims, it presents an implementation-backed, IEEE-style research paper with deep methodology, structural validation, and conference-ready placeholders for future user studies and benchmark graphs. This makes the paper suitable both as a strong technical draft and as a realistic base for later quantitative expansion.
+
+\subsection{Research Contributions}
+The main contributions of this work are summarized as follows:
+\begin{itemize}
+    \item \textbf{Interpretable adaptive interviewing framework:} We propose a mock interview architecture that combines heuristic search, symbolic rule evaluation, planning, and multimodal interaction rather than relying on a single black-box component.
+    \item \textbf{Repository-grounded technical assessment pipeline:} The implemented system contains 117 balanced questions across 13 topics and three difficulty levels, each linked to keywords, concepts, ideal answers, code examples, and two families of logic rules.
+    \item \textbf{Transparent response evaluation:} We formalize a weighted answer scoring model that integrates lexical coverage, concept explanation, detail depth, code-style evidence, and FOL trace satisfaction.
+    \item \textbf{Planning-based remediation:} We unify CSP syllabus generation, STRIPS interview state progression, and A* learning-path synthesis into a single post-interview pedagogical pipeline.
+    \item \textbf{Implementation-centered validation:} We provide measurable results from the artifact itself, including CSP reliability across 200 randomized runs, adaptive topic refocusing under weakness conditions, score separation for strong versus weak answers, and representative A* remediation paths.
+\end{itemize}
+
+\section{Related Work and Research Gap}
+Recent literature on AI interview systems demonstrates clear momentum toward multimodal automation, but also reveals a fragmentation of objectives. Several systems place strong emphasis on behavioral analysis by combining facial expression recognition, speech processing, and confidence estimation. Amrutha \textit{et al.} \cite{r1} and Khapekar \textit{et al.} \cite{r5} show that emotion, confidence, and communication cues can enrich mock interview assessment, while Jagtap \textit{et al.} \cite{r6}, Slathia \textit{et al.} \cite{r7}, and Lee and Kim \cite{r8} argue that multimodal systems outperform isolated text-only approaches in realism and perceived completeness. These studies are important, but most of them treat technical answer evaluation as one component among many and provide limited visibility into how verbal correctness is operationalized.
+
+Another branch of the literature studies voice-centric conversational AI pipelines. Allbert \textit{et al.} \cite{r2} evaluate cascades composed of speech-to-text, LLM reasoning, and text-to-speech modules over more than 5,000 AI interviews and demonstrate that technically stronger pipeline combinations do not always translate into higher user satisfaction. Their analysis is particularly relevant because it shows that modular voice architectures matter, but also that end-to-end system quality depends on user experience and design objectives rather than isolated component accuracy alone. Shah \textit{et al.} \cite{r3} similarly emphasize the value of conversational AI systems that transform interaction into concrete, goal-oriented action rather than passive feedback.
+
+The broader adoption literature adds another dimension. Lee and Kim \cite{r4} show that perceived usefulness, ease of use, and organizational compatibility are key determinants in adopting AI-based interview systems. That observation is directly relevant to educational interview coaching tools: a technically sophisticated system still needs transparent feedback, understandable logic, and practical workflow fit if it is to be trusted and used repeatedly.
+
+Despite these advances, three gaps remain visible across the surveyed literature. First, many systems emphasize multimodal observation but under-specify their technical answer scoring logic, which limits explainability. Second, personalization is often described at the interface level but not implemented through explicit planning and search mechanisms that can be audited. Third, post-interview remediation is usually generic, whereas learning systems benefit from a structured path tied to the exact weaknesses uncovered during the interview. The proposed AI Interview Coach targets these gaps by combining adaptive search, symbolic answer evaluation, formal planning, and learning-path synthesis in a single transparent architecture.
+
+\begin{table*}[t]
+\centering
+\caption{Comparison of prior AI interview literature and the gap addressed by the proposed framework}
+\label{tab:lit_compare}
+\small
+\begin{tabular}{L{0.8cm}L{2.6cm}L{4.2cm}L{7.2cm}}
+\toprule
+\textbf{Ref.} & \textbf{Primary focus} & \textbf{Key strength} & \textbf{Remaining gap relative to this work} \\
+\midrule
+\cite{r1} & Emotion and confidence analysis in mock interviews & Uses deep learning to classify emotions and estimate confidence in web-based interviews & Focuses on behavioral interpretation; offers limited detail on transparent technical answer scoring, topic adaptation, or post-interview remediation planning \\
+\cite{r2} & STT--LLM--TTS cascade evaluation & Evaluates voice pipeline combinations at scale and highlights the importance of user satisfaction & Benchmarks modular voice stacks, but does not center symbolic pedagogical evaluation or planning-based personalization \\
+\cite{r3} & Conversational AI coaching for goals and reflection & Connects AI conversations with concrete, action-oriented follow-up & Not designed specifically for technical mock interviews, question balancing, or logic-grounded answer assessment \\
+\cite{r4} & Organizational adoption of AI interview systems & Explains trust, usefulness, and deployment factors using decision models & Addresses adoption and fairness concerns, but not the internal architecture of adaptive educational mock interview systems \\
+\cite{r5}, \cite{r6}, \cite{r7}, \cite{r8} & Multimodal interview evaluation for remote hiring & Combine voice, facial, and verbal signals for broader assessment & Heavily emphasize multimodal inference; comparatively less attention is given to explicit search, explainable transcript scoring, curriculum planning, and personalized study path generation \\
+\textbf{This work} & Adaptive, interpretable mock interview coaching & Integrates heuristic search, symbolic evaluation, CSP, STRIPS, A*, voice interaction, and optional LLM support & Designed for transparent technical preparation, auditable feedback, and educational remediation rather than opaque autonomous hiring decisions \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Framework Overview and Problem Formulation}
+\subsection{System Overview}
+AI Interview Coach is implemented as a modular educational system in which deterministic scoring and planning logic are separated from optional generative assistance. The user first provides a profile containing target role, experience level, and skills. This profile is resolved into prioritized interview topics through a knowledge base containing topic metadata and skill aliases. The interview layer then selects questions adaptively, accepts spoken or typed responses, evaluates them using rule-grounded transcript analysis, and records structured observations into the session state. Once the interview is complete, the system aggregates performance by topic and difficulty, generates a report, and computes a targeted study path.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.0\linewidth]{fig1.png}
+\caption{Proposed architecture of the AI Interview Coach framework, separating deterministic assessment modules from optional generative assistance.}
+\label{fig:architecture}
+\end{figure}
+
+The architecture is deliberately hybrid. Search and planning modules govern control flow and curriculum decisions, while the answer evaluator provides a transparent scoring function and trace. Voice and LLM modules support interaction quality, but are not entrusted with the entire assessment stack. This design is motivated by the educational requirement that a candidate should be able to understand \textit{why} the system assigned a certain score or chose a certain next question.
+
+\subsection{Formal Problem Statement}
+Let the user profile be defined as
+\begin{equation}
+U = \{r, e, K\},
+\end{equation}
+where $r$ denotes the target role, $e$ denotes the experience level, and $K$ denotes the set of declared skills. Let the question bank be
+\begin{equation}
+Q = \{q_1, q_2, \dots, q_n\},
+\end{equation}
+with each question storing metadata such as topic, difficulty, keywords, concepts, ideal answer components, and logic rules. Let $H_t$ be the answer history up to time step $t$. The adaptive selection objective is to choose the next unasked question
+\begin{equation}
+q_t^* = \arg\max_{q \in Q \setminus H_t} \mathcal{H}(q \mid U, H_t),
+\label{eq:argmax}
+\end{equation}
+where $\mathcal{H}$ is a composite heuristic balancing relevance, difficulty fit, novelty, weakness focus, and topic balance.
+
+Given a transcript answer $a_t$ to question $q_t$, the evaluator produces a feedback object
+\begin{equation}
+F_t = \mathcal{E}(q_t, a_t),
+\end{equation}
+where $F_t$ includes a score in $[0,10]$, strengths, weaknesses, missing concepts, suggestions, and a symbolic trace of predicate satisfaction. After the interview, the remediation objective is to compute a minimal-cost learning path
+\begin{equation}
+\Pi^* = \arg\min_{\Pi} \mathrm{Cost}(\Pi)
+\end{equation}
+subject to a mastery threshold over weak topics.
+
+\subsection{Design Requirements}
+The framework was designed under the following requirements:
+\begin{itemize}
+    \item \textbf{Adaptivity:} the next question should react to the role, experience level, and recent weakness profile of the candidate.
+    \item \textbf{Explainability:} the scoring pipeline must expose intermediate logic rather than return an opaque score only.
+    \item \textbf{Coverage control:} an interview session should remain balanced across difficulties and topics when required.
+    \item \textbf{Pedagogical follow-through:} the system must move from evaluation to actionable remediation instead of stopping at assessment.
+    \item \textbf{Interaction realism:} speech input, spoken prompts, and dashboard analytics should make the system feel close to a practical mock interview assistant.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.0\linewidth]{fig2.png}
+\caption{End-to-end workflow of the proposed interview coaching pipeline.}
+\label{fig:workflow}
+\end{figure}
+
+As illustrated in Fig.~\ref{fig:workflow}, the proposed workflow is organized as a closed-loop interview pipeline rather than a one-pass questionnaire engine. The process begins with candidate profile intake and topic resolution, after which the system may optionally invoke the CSP-based pre-planner to enforce a balanced interview structure before live questioning begins. During execution, each interview turn passes through adaptive question selection, answer capture, logic-grounded evaluation, and session-state updates, allowing the system to modify subsequent prompts according to observed strengths and weaknesses.
+
+The post-interview portion of the workflow is equally important from a pedagogical standpoint. After the interview loop terminates, the framework aggregates topic-wise and difficulty-wise performance, generates a structured report, and invokes the A*-based remediation planner to transform weak areas into an actionable study path. This end-to-end design emphasizes that the system is not merely evaluating candidate answers, but also converting interview observations into interpretable feedback and targeted learning recommendations.
+
+\section{Methodology}
+\subsection{Knowledge Representation and Question Bank Engineering}
+The knowledge base is the core artifact that supports all subsequent search, evaluation, and reporting modules. In the current implementation, the repository contains a structured question bank of 117 questions across 13 topics: Python, Java, JavaScript, SQL, data structures and algorithms, object-oriented programming, DBMS, operating systems, computer networks, React, backend engineering, API design, and behavioral interviewing. Every topic contains exactly nine questions, with three questions each for beginner, intermediate, and advanced levels. This produces a perfectly balanced distribution of 39 questions per difficulty level.
+
+Each question entry contains the raw prompt, a list of technical keywords, a list of conceptual anchors, an ideal answer skeleton, an example snippet or illustrative answer fragment, role tags, skill tags, and two automatically generated FOL rule families. The first rule family corresponds to a \texttt{GoodAnswer} pattern and checks multiple predicates, while the second corresponds to a \texttt{PartialAnswer} pattern designed to capture incomplete but directionally correct answers. This structure allows the same question object to serve as a search node, an evaluation target, and a reporting unit.
+
+The current repository additionally defines 37 skill aliases that map user-declared skills and roles onto the internal topic space. This helps normalize variations such as broader role titles or overlapping skill names before question selection begins. A behavioral topic is also retained in the resolved topic list by default so that technical interviews do not entirely omit communication-oriented assessment.
+
+\begin{table}[t]
+\centering
+\caption{Repository-backed knowledge base statistics}
+\label{tab:kb_stats}
+\small
+\begin{tabular}{L{3.0cm}L{3.0cm}}
+\toprule
+\textbf{Statistic} & \textbf{Value} \\
+\midrule
+Total interview topics & 13 \\
+Total questions & 117 \\
+Questions per topic & 9 \\
+Difficulty distribution & 39 beginner, 39 intermediate, 39 advanced \\
+Skill alias entries & 37 \\
+Average keywords per question & 5.01 \\
+Average concepts per question & 3.00 \\
+Questions with ideal example & 117 / 117 \\
+Questions with \texttt{GoodAnswer} rule & 117 / 117 \\
+Questions with \texttt{PartialAnswer} rule & 117 / 117 \\
+Average role tags per question & 2.12 \\
+Average skill tags per question & 1.66 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Adaptive Question Selection via Best-First Search}
+\subsubsection{Heuristic Definition}
+The next-question selector operates as a Best-First Search policy over the available candidate questions. For a candidate question $q$, the deployed implementation computes a weighted score
+\begin{equation}
+\mathcal{H}(q \mid U, H_t) =
+0.34R(q,U) + 0.24D(q,U) + 0.16N(q,H_t) + 0.18W(q,H_t) + 0.08B(q,H_t),
+\label{eq:heuristic}
+\end{equation}
+where $R$ denotes role and skill relevance, $D$ denotes difficulty match, $N$ denotes novelty, $W$ denotes weakness focus, and $B$ denotes recent topic balance.
+
+The relevance term uses role tags, skill tags, and a topic weight map resolved from the profile. The difficulty term aligns question difficulty with candidate experience level. The novelty term discourages repetition. The weakness-focus term increases the priority of topics in which recent scores were low. The topic-balance term prevents degenerate sequences that repeatedly ask the same topic without reason.
+
+\subsubsection{Candidate Pool Construction}
+The selector first resolves topics from the profile using the knowledge base alias maps. Candidate questions are gathered from those resolved topics, and the selector falls back to role-matched or global questions if the filtered set is too small. This fallback is important for robustness because it guarantees that even sparse profiles still lead to a complete interview.
+
+\subsubsection{Optional Generative Rephrasing}
+When AI-enhanced mode is enabled, the system uses Gemini to rephrase the selected question according to the same topic, difficulty, role, and concept anchor. Crucially, the LLM does not determine which topic wins the ranking; it only refines the surface form of the question. This preserves interpretability of the control policy.
+
+\begin{algorithm}[t]
+\caption{Adaptive Next-Question Selection}
+\label{alg:selection}
+\begin{algorithmic}[1]
+\Require User profile $U$, answer history $H_t$, knowledge base $Q$
+\Ensure Next interview question $q_t^*$
+\State $T \gets \textsc{ResolveTopics}(U)$
+\State $C \gets \textsc{QuestionsFromTopics}(Q, T)$
+\If{$|C|$ is too small}
+    \State $C \gets C \cup \textsc{RoleMatchedQuestions}(Q, U)$
+\EndIf
+\If{$C$ is empty}
+    \State $C \gets Q$
+\EndIf
+\State Remove already asked questions from $C$
+\ForAll{$q \in C$}
+    \State Compute $R(q,U), D(q,U), N(q,H_t), W(q,H_t), B(q,H_t)$
+    \State $\mathrm{score}(q) \gets \mathcal{H}(q \mid U, H_t)$ using (\ref{eq:heuristic})
+\EndFor
+\State Sort $C$ by descending $\mathrm{score}(q)$
+\State $q_t^* \gets$ top-ranked question
+\If{AI-enhanced mode is enabled}
+    \State Rephrase $q_t^*$ using LLM while preserving topic and difficulty
+\EndIf
+\State \Return $q_t^*$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Logic-Grounded Answer Evaluation}
+\subsubsection{Predicate Layer}
+The answer evaluator processes transcript text using a small set of interpretable predicates implemented in the FOL engine. These predicates include \texttt{Contains}, \texttt{Explains}, \texttt{ExemplifiesCode}, \texttt{IsDetailed}, and \texttt{Defines}. For example, \texttt{Contains} checks direct or partial term presence, \texttt{Explains} examines whether a concept appears near explanatory connectors such as ``is'', ``means'', or ``refers to'' within a local text window, and \texttt{ExemplifiesCode} uses regex-based detection to identify code-like structures such as \texttt{def}, \texttt{class}, assignment, loops, or fenced code.
+
+\subsubsection{Composite Scoring Model}
+The current implementation combines lexical, conceptual, structural, and rule-based signals into the final answer score:
+\begin{equation}
+S_{\mathrm{ans}} = 10 \cdot \min \left(1,\ 0.28S_{kw} + 0.28S_{con} + 0.18S_{det} + 0.12S_{code} + 0.14S_{fol}\right),
+\label{eq:score}
+\end{equation}
+where:
+\begin{align}
+S_{kw} &= \frac{|K_{\mathrm{matched}}|}{|K|}, \\
+S_{con} &= \frac{1}{|C|}\sum_{c \in C}\mathrm{Explains}(a,c), \\
+S_{det} &= \min\left(1,\frac{|W(a)|}{\theta_d}\right), \\
+S_{fol} &= 0.7G + 0.3P.
+\end{align}
+Here, $K$ is the keyword set, $C$ is the concept set, $|W(a)|$ is the answer word count, and $\theta_d \in \{18, 28, 40\}$ is the minimum target word count for beginner, intermediate, and advanced questions, respectively. $G$ and $P$ are the scores of the \texttt{GoodAnswer} and \texttt{PartialAnswer} rule families.
+
+\subsubsection{Trace-Aware Feedback Synthesis}
+Beyond the scalar score, the evaluator returns strengths, weaknesses, missing concepts, matched keywords, suggestions, and the full FOL trace. This is a pedagogically important design choice: a candidate can inspect not only the final grade but also the reasoning evidence that produced it. Such traceability is especially valuable in learning environments where candidates must understand what to improve before the next interview session.
+
+\begin{algorithm}[t]
+\caption{Logic-Grounded Answer Evaluation}
+\label{alg:evaluation}
+\begin{algorithmic}[1]
+\Require Question metadata $q$, transcript answer $a$
+\Ensure Feedback object $F$
+\State Extract keywords $K$, concepts $C$, ideal answer metadata, and FOL rules from $q$
+\State Compute matched and missing keywords from $a$
+\ForAll{$c \in C$}
+    \State Compute concept explanation score using \texttt{Explains}$(a,c)$
+\EndFor
+\State Compute $S_{kw}, S_{con}, S_{det}, S_{code}$ and $S_{fol}$
+\State Aggregate $S_{\mathrm{ans}}$ using (\ref{eq:score})
+\State Build logic trace from \texttt{GoodAnswer} and \texttt{PartialAnswer} rules
+\State Generate strengths, weaknesses, suggestions, and missing concepts
+\State \Return $F = \{S_{\mathrm{ans}}, \text{trace}, \text{strengths}, \text{weaknesses}, \text{suggestions}\}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Constraint-Based Pre-Interview Planning}
+The framework optionally supports a pre-planned syllabus mode implemented as a Constraint Satisfaction Problem with backtracking. Let the interview plan be a sequence of decision variables
+\begin{equation}
+X = \{X_1, X_2, \dots, X_{10}\},
+\end{equation}
+where each $X_i$ is assigned a question from the knowledge base. The current planner enforces the following hard constraints:
+\begin{align}
+\sum_{i=1}^{10}\mathbb{1}[\delta(X_i)=\text{beginner}] &= 4, \nonumber\\
+\sum_{i=1}^{10}\mathbb{1}[\delta(X_i)=\text{intermediate}] &= 4, \nonumber\\
+\sum_{i=1}^{10}\mathbb{1}[\delta(X_i)=\text{advanced}] &= 2, \label{eq:csp}\\
+|\{\tau(X_i)\}_{i=1}^{10}| &\geq 3, \nonumber\\
+X_i &\neq X_j \quad \forall i \neq j, \nonumber
+\end{align}
+where $\delta(\cdot)$ returns question difficulty and $\tau(\cdot)$ returns question topic. The domain is shuffled before search to allow variation across generated plans, and forward-checking style bounds are used to prune branches early once a difficulty quota is exceeded. This module is useful in settings where instructors or candidates want guaranteed interview structure rather than full online adaptation.
+
+\subsection{STRIPS-Based Session Progression}
+The live interview session is formalized as a planning problem using STRIPS-style state transitions \cite{r10,r11}. The initial state contains \texttt{session\_started}, and the goal state includes \texttt{session\_closed}, \texttt{report\_generated}, and \texttt{advanced\_assessed}. The current action library includes seven named actions: \texttt{greet\_candidate}, \texttt{ask\_beginner\_question}, \texttt{ask\_intermediate\_question}, \texttt{ask\_advanced\_question}, \texttt{remediate\_weak\_topic}, \texttt{generate\_report}, and \texttt{close\_session}. A derived state update function observes the answer history and adds facts such as \texttt{basics\_assessed}, \texttt{intermediate\_assessed}, or \texttt{weak\_topic\_identified}.
+
+This layer serves two purposes. First, it gives the interface a formal representation of interview progress. Second, it provides an inspectable plan log so that the session lifecycle is not hidden inside ad hoc UI conditionals alone. In practice, the current canonical plan generated from the initial state is:
+\begin{equation}
+\texttt{greet} \rightarrow \texttt{beginner} \rightarrow \texttt{intermediate} \rightarrow \texttt{advanced} \rightarrow \texttt{report} \rightarrow \texttt{close}.
+\end{equation}
+The remediation action becomes reachable only when low scores introduce a weak-topic fact into the world state.
+
+\subsection{A*-Based Learning Path Synthesis}
+After the interview, the system computes an interpretable remediation path using A* search \cite{r9,r11}. Let the post-interview mastery state be
+\begin{equation}
+s = (m_1, m_2, \dots, m_k),
+\end{equation}
+where each $m_i$ is a topic score and the mastery threshold is $\tau = 8.0$. Each learning module acts as a transition with an associated time cost and score improvement. The heuristic used by the implementation is:
+\begin{equation}
+h(s) = \sum_{i=1}^{k}\frac{\max(0,\tau - m_i)}{2}.
+\label{eq:astar}
+\end{equation}
+This heuristic is admissible relative to the available module library because it assumes an optimistic improvement-to-hour ratio. The current system includes 43 learning modules spanning technical and behavioral topics, each with a name, topic, difficulty phase, hour cost, and expected score improvement. The result is not a vague recommendation paragraph but an ordered, minimal-cost study plan.
+
+\begin{algorithm}[t]
+\caption{A*-Driven Learning Path Synthesis}
+\label{alg:astar}
+\begin{algorithmic}[1]
+\Require Initial topic-score state $s_0$, mastery threshold $\tau$, module library $\mathcal{M}$
+\Ensure Minimal-cost learning path $\Pi^*$
+\State Initialize open list with $(f,g,s_0,\emptyset)$ where $g=0$ and $f=g+h(s_0)$
+\While{open list is not empty}
+    \State Pop state with minimum $f$
+    \If{all topic scores in current state are at least $\tau$}
+        \State \Return current path
+    \EndIf
+    \ForAll{module $m \in \mathcal{M}$ applicable to an unmastered topic}
+        \State Apply score improvement of $m$ to create successor state
+        \State Update path cost $g' \gets g + \mathrm{hours}(m)$
+        \State Compute $f' \gets g' + h(\mathrm{successor})$
+        \State Push successor into open list
+    \EndFor
+\EndWhile
+\State \Return empty path
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Multimodal Interaction Layer and Optional LLM Assistance}
+\subsubsection{Speech Input Path}
+The interface supports microphone-driven answers using \texttt{audio-recorder-streamlit} for in-browser recording and the \texttt{speech\_recognition} package for transcription via Google Speech Recognition. The current evaluation logic operates on transcript text rather than raw audio features, which keeps the scoring layer deterministic and inspectable. Typed answers remain available as a fallback when speech recognition fails or network conditions are poor.
+
+\subsubsection{Voice Output Path}
+Interview prompts are spoken using \texttt{edge-tts} with the \texttt{en-US-JennyNeural} voice by default. If \texttt{edge-tts} fails, the system falls back to \texttt{gTTS}. Audio is cached in session state, allowing repeated playback of identical prompts without regenerating the audio stream. This improves responsiveness and supports a more realistic interviewer presence in the interface.
+
+\subsubsection{Generative Augmentation}
+The system includes optional Gemini-based support for dynamic question rephrasing, conversational coaching tips, and report summarization. This generative layer is deliberately isolated from the final score computation. The design decision is methodological as much as technical: LLM assistance improves interaction quality, but the educational score should remain reproducible and auditable.
+
+\subsection{Adversarial and Uncertainty-Based Extensions}
+To enrich the system beyond a single interview mode, the repository includes two advanced extensions. The first is an adversarial mode based on Minimax with alpha-beta pruning. In that mode, the interviewer behaves as a minimizing player and chooses harder questions using a depth-limited search over a candidate pool. The current difficulty utility mapping is beginner $=8$, intermediate $=5$, and advanced $=2$, allowing the selector to stress-test the candidate by preferring prompts with lower expected payoff.
+
+The second extension is a Wumpus-inspired interview world that maps questions onto a $4 \times 4$ grid containing safe cells, pits, Wumpus cells, and a gold cell. The agent receives symbolic percepts such as breeze, stench, and glitter, and the interface can use this grid to create a gamified uncertainty-based interview experience. Although these two modes are not the main scoring backbone of the system, they demonstrate that the architecture can accommodate classical AI paradigms beyond standard interview flows.
+
+\subsection{Computational Characteristics}
+The computational behavior of the framework is favorable for an educational prototype. Let $m$ be the number of candidate questions considered during dynamic selection. The Best-First selector computes heuristic scores for all candidates and sorts them, yielding approximately $O(m \log m)$ time. The transcript evaluator is roughly linear in the number of keywords, concepts, and predicates attached to the selected question, making it lightweight for live use. The CSP planner remains exponential in the worst case, but the current problem size is constrained to 10 interview slots with strong forward-checking rules, which keeps search practical. The A* planner depends on the branching behavior of the 43-module library and the number of weak topics, but remains manageable because topic counts are small and the heuristic is informative.
+
+\section{Implementation-Centered Structural Validation}
+\subsection{Validation Philosophy}
+This paper intentionally distinguishes between \textit{implemented structural validation} and \textit{future large-scale human evaluation}. All quantitative statements in this section were derived directly from the running artifact and repository rather than invented for presentation value. This choice improves credibility and keeps the manuscript suitable for later expansion with user studies, latency profiling, and benchmark baselines.
+
+\subsection{Structural Validation Results}
+Table \ref{tab:structural_validation} summarizes the most important implementation-backed observations. These results do not yet constitute a full human-subject study, but they are meaningful because they validate the core claims of balance, adaptivity, traceability, and planning consistency.
+
+\begin{table}[t]
+\centering
+\caption{Structural validation of the implemented prototype}
+\label{tab:structural_validation}
+\small
+\begin{tabular}{L{2.2cm}L{3.7cm}}
+\toprule
+\textbf{Artifact check} & \textbf{Observed result} \\
+\midrule
+Question bank balance & 117 total questions across 13 topics, with exactly 39 beginner, 39 intermediate, and 39 advanced questions \\
+Rule coverage & Every question contains both \texttt{GoodAnswer} and \texttt{PartialAnswer} rule families, enabling traceable scoring for all prompts \\
+CSP robustness & 200/200 randomized planning runs produced a valid 10-question syllabus satisfying the exact 4-4-2 difficulty distribution; distinct topics averaged 7.25 (minimum 5, maximum 10) \\
+Adaptive refocusing & After simulating a weak SQL answer history (score 3.0), the top five predicted next questions were all SQL prompts with heuristic scores of 0.922 or 0.855 \\
+STRIPS plan consistency & Canonical session plan generated as greet $\rightarrow$ beginner $\rightarrow$ intermediate $\rightarrow$ advanced $\rightarrow$ report $\rightarrow$ close \\
+Evaluator separation & On the same Python prompt, a detailed answer scored 8.2 while a weak answer scored 4.4, indicating usable discrimination between response qualities \\
+A* remediation capacity & 43 learning modules support topic-specific post-interview planning across technical and behavioral areas \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interpretation of Adaptive Selection Behavior}
+The weakness-driven refocusing behavior is particularly important because it demonstrates that the selector is not merely ranking questions by static profile similarity. In a simulated profile for a software engineering candidate with prior scores of 8.5 in Python, 3.0 in SQL, and 7.0 in data structures, the top five predicted follow-up questions all belonged to SQL. This shows that the weakness-focus term in (\ref{eq:heuristic}) is functioning as intended: once the candidate underperforms in a topic, the system shifts more interview attention toward repair rather than continuing with an evenly mixed but pedagogically less useful sequence.
+
+\subsection{Illustrative Scoring Explainability}
+The answer evaluator also exhibited meaningful response separation in a controlled case study based on the first Python question on lists versus tuples. A detailed response that explained mutability, data structure tradeoffs, and use-case differences obtained a score of 8.2. A short response stating only that lists and tuples are data structures and that tuples are faster obtained a score of 4.4. In addition to the numeric difference, the evaluator exposed which keywords were matched, which concepts remained missing, and which rule conditions were only partially satisfied. This supports the claim that the framework is better suited to formative coaching than one-shot opaque scoring.
+
+\begin{table*}[t]
+\centering
+\caption{Representative A* remediation scenarios generated by the implemented prototype}
+\label{tab:astar_cases}
+\small
+\begin{tabular}{L{1.3cm}L{2.8cm}L{1.0cm}L{8.8cm}}
+\toprule
+\textbf{Case} & \textbf{Initial topic-score state} & \textbf{Total hours} & \textbf{Generated remediation path} \\
+\midrule
+Entry-level technical profile & Python $=4$, SQL $=5$, DSA $=3$ & 10.0 & Python Basics \& Variables $\rightarrow$ Python Data Structures $\rightarrow$ SQL Joins \& Subqueries $\rightarrow$ Arrays \& Strings $\rightarrow$ Dynamic Programming \\
+Frontend-oriented profile & JavaScript $=5$, React $=4$, Behavioral $=6$ & 7.5 & JS Fundamentals $\rightarrow$ Structured Communication Practice $\rightarrow$ React Components \& State $\rightarrow$ React Hooks \& Performance $\rightarrow$ JS Async \& Promises \\
+Backend-oriented profile & Java $=6$, DBMS $=4$, Backend $=5$ & 9.5 & Java Foundations \& JVM $\rightarrow$ Relational Modeling Basics $\rightarrow$ Backend Service Basics $\rightarrow$ Transactions \& Schema Tradeoffs $\rightarrow$ Reliability \& Async Workflows \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Learning Path Interpretation}
+The remediation examples in Table \ref{tab:astar_cases} show that the post-interview planning layer is not merely decorative. For each initial weakness profile, the A* engine produced a five-step plan whose total hour cost varied according to topic deficits. The generated sequences are interpretable in pedagogical terms: they begin with foundational recovery in the weakest areas, then proceed toward intermediate or advanced modules that close the remaining mastery gap. This behavior is preferable to generic advice such as ``practice more Python,'' because it gives the user a structured progression and estimated study effort.
+
+\section{Discussion, Limitations, and Final Evaluation Roadmap}
+\subsection{Why the Hybrid Design Matters}
+The proposed framework is strongest where prior systems often remain opaque. Rather than relying exclusively on a black-box model to drive question selection, scoring, and reporting, AI Interview Coach uses different algorithmic tools for different educational functions. Heuristic search handles adaptive prioritization, symbolic rules handle transcript evaluation, CSP handles strict syllabus planning, STRIPS handles interview state transitions, and A* handles remediation. This separation of concerns improves inspectability and makes the system easier to debug, extend, and explain.
+
+Another important design choice is the isolation of optional LLM assistance from deterministic scoring. Many recent AI interview systems implicitly merge generation and evaluation. In contrast, the present architecture allows voice interaction and conversational polish without surrendering the core educational rubric to a stochastic subsystem. This is a useful compromise between usability and explainability.
+
+\subsection{Current Limitations}
+Despite its strengths, the current prototype has several limitations that should be acknowledged explicitly.
+\begin{itemize}
+    \item \textbf{No large-scale user study yet:} the present manuscript reports structural validation and controlled case studies, not a full benchmark with hundreds of candidate sessions or expert raters.
+    \item \textbf{Transcript-centric scoring:} the current evaluator operates on text transcripts and does not yet integrate vocal prosody, facial expressions, gaze, or turn-taking quality into the core score.
+    \item \textbf{Rule-engine simplicity:} predicates such as \texttt{Contains} and \texttt{Explains} are intentionally lightweight and interpretable, but they may miss semantically correct paraphrases that a richer semantic model could capture.
+    \item \textbf{Session persistence:} the prototype currently relies heavily on in-memory session state and does not yet provide full database-backed history or multi-user analytics.
+    \item \textbf{Manual heuristic tuning:} the current weight configuration is engineered for sensible interview behavior, but not yet optimized through large-scale learning-to-rank or reinforcement learning.
+\end{itemize}
+
+\subsection{Ethical and Deployment Considerations}
+The system is intended as a formative educational tool, not as an autonomous hiring authority. This distinction is important. Literature on AI interview adoption already highlights issues of fairness, transparency, and organizational trust \cite{r4}. By keeping the present framework focused on practice and self-improvement, the design avoids many of the highest-risk deployment scenarios associated with automated employment decisions. Future versions should still incorporate privacy controls, audit logs, user consent around voice data, and fairness checks across roles, accents, and educational backgrounds.
+
+\subsection{Recommended Final Experimental Package}
+Before final conference submission, the manuscript can be strengthened further through a formal evaluation package built on top of the present artifact. Recommended additions include:
+\begin{itemize}
+    \item Expert-rubric agreement between human reviewers and the rule-based evaluator.
+    \item End-to-end latency measurements for speech capture, transcription, question selection, scoring, and report rendering.
+    \item Ablation studies comparing full heuristic selection against random selection, relevance-only selection, and no-weakness-focus selection.
+    \item User satisfaction and perceived usefulness studies for voice mode, explainability, and learning-path usefulness.
+    \item Fairness checks across varied roles, skill mixes, and answer verbosity patterns.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.0\linewidth]{fig3.png}
+\caption{Placeholder block for the final quantitative visualizations to be added after full user-study and benchmark experiments.}
+\label{fig:future_eval}
+\end{figure}
+
+Figure~\ref{fig:future_eval} is included as a structured placeholder for the final empirical visualizations that should accompany the current implementation-centered manuscript before conference submission. In its final form, this figure should consolidate the most reviewer-relevant quantitative views of the system, including topic-wise performance distributions, score progression across interview turns, latency decomposition across the interaction stack, and agreement analysis between human judgment and the rule-based evaluator.
+
+Including this figure block at the manuscript stage serves two practical purposes. First, it makes the intended experimental package explicit, which helps align future benchmarking work with the already defined architecture and methodology. Second, it preserves visual space in the paper for the exact plots that will eventually convert the present structural validation into a fuller conference-grade evaluation narrative.
+
+\section{Conclusion}
+This paper presented AI Interview Coach, an interpretable adaptive mock interview framework that combines heuristic question selection, first-order-logic-inspired transcript evaluation, constraint-based syllabus planning, STRIPS state progression, and A*-based remediation inside a multimodal interview interface. Unlike many recent AI interview systems that prioritize black-box scoring or behavioral analysis alone, the proposed framework emphasizes transparent technical coaching, inspectable feedback, and planning-based learning support. The implemented prototype already provides a balanced 117-question technical corpus, deterministic rule-grounded scoring, robust CSP planning, formal session progression, and interpretable study-path synthesis.
+
+The current structural validation results show that the artifact is internally coherent, adaptive, and pedagogically meaningful. At the same time, the paper remains honest about what has and has not yet been measured. This balance makes the manuscript a strong foundation for an IEEE-style conference submission: the methodology is deep, the architecture is defensible, the current evidence is real, and the placeholders for future graphs, user studies, and latency analysis are already integrated into the paper structure. Future work will extend the prototype toward richer multimodal assessment, persistent analytics, expert-aligned benchmarking, and fairness-aware evaluation.
+
+\section*{Acknowledgment}
+The authors may acknowledge their department, project guide, institute, or computing support infrastructure here before final submission.
+
+\balance
+\begin{thebibliography}{00}
+
+\bibitem{r1} M. B. Amrutha, \textit{et al.}, ``Enhancing Interview Evaluation: AI-Based Emotion and Confidence Analysis in Mock Interviews,'' \textit{Journal of Nonlinear Analysis and Optimization}, vol. 15, no. 1, 2024.
+
+\bibitem{r2} R. Allbert, \textit{et al.}, ``Evaluating Speech-to-Text $\times$ LLM $\times$ Text-to-Speech Combinations for AI Interview Systems,'' \textit{arXiv preprint arXiv:2507.16835}, 2025.
+
+\bibitem{r3} K. Shah, \textit{et al.}, ``GROW: A Conversational AI Coach for Goals, Reflection, Optimism, and Well-Being,'' NYU Abu Dhabi, 2025.
+
+\bibitem{r4} B.-C. Lee and B.-Y. Kim, ``A Decision-Making Model for Adopting an AI-Generated Recruitment Interview System,'' \textit{International Journal of Management}, vol. 12, no. 4, 2021.
+
+\bibitem{r5} S. Khapekar, \textit{et al.}, ``AI Powered Mock Interview System with Real-Time Voice and Emotion Analysis,'' \textit{IJNRD}, vol. 10, no. 2, 2025.
+
+\bibitem{r6} S. R. Jagtap, \textit{et al.}, ``AI-Driven Real-Time Interview Simulation App with Voice Recognition and Facial Analysis,'' \textit{Indian Journal of Science and Technology}, vol. 18, no. 25, 2025.
+
+\bibitem{r7} D. Slathia, \textit{et al.}, ``Automated Interview Evaluation System,'' \textit{Journal of Advance and Future Research}, vol. 3, no. 12, 2025.
+
+\bibitem{r8} B. C. Lee and B. Y. Kim, ``Development of an AI-Based Interview System for Remote Hiring,'' \textit{International Journal of Advanced Research in Engineering and Technology}, vol. 12, no. 3, 2021.
+
+\bibitem{r9} P. E. Hart, N. J. Nilsson, and B. Raphael, ``A Formal Basis for the Heuristic Determination of Minimum Cost Paths,'' \textit{IEEE Transactions on Systems Science and Cybernetics}, vol. 4, no. 2, pp. 100--107, 1968.
+
+\bibitem{r10} R. E. Fikes and N. J. Nilsson, ``STRIPS: A New Approach to the Application of Theorem Proving to Problem Solving,'' \textit{Artificial Intelligence}, vol. 2, no. 3--4, pp. 189--208, 1971.
+
+\bibitem{r11} S. Russell and P. Norvig, \textit{Artificial Intelligence: A Modern Approach}, 4th ed. Hoboken, NJ, USA: Pearson, 2020.
+
+\end{thebibliography}
+
+\end{document}

@@ -54,7 +54,52 @@ class AStarLearningPath:
             # JavaScript (fallback if user is tested on it)
             LearningModule("JS Fundamentals", "javascript", "beginner", 1.0, 2.0),
             LearningModule("JS Async & Promises", "javascript", "intermediate", 2.0, 2.5),
-            LearningModule("JS Prototype Chain", "javascript", "advanced", 3.0, 2.0)
+            LearningModule("JS Prototype Chain", "javascript", "advanced", 3.0, 2.0),
+
+            # Java
+            LearningModule("Java Foundations & JVM", "java", "beginner", 1.5, 2.0),
+            LearningModule("Java Collections & OOP Design", "java", "intermediate", 2.5, 2.5),
+            LearningModule("Java Concurrency & Performance", "java", "advanced", 3.5, 2.0),
+
+            # OOP
+            LearningModule("OOP Principles & Encapsulation", "oop", "beginner", 1.0, 2.0),
+            LearningModule("Composition & SOLID Design", "oop", "intermediate", 2.0, 2.5),
+            LearningModule("Architectural Abstractions", "oop", "advanced", 3.0, 2.0),
+
+            # DBMS
+            LearningModule("Relational Modeling Basics", "dbms", "beginner", 1.5, 2.0),
+            LearningModule("Transactions & Schema Tradeoffs", "dbms", "intermediate", 2.5, 2.5),
+            LearningModule("Distributed Data Systems", "dbms", "advanced", 3.5, 2.0),
+
+            # Operating Systems
+            LearningModule("Processes, Threads & Memory", "operating systems", "beginner", 1.5, 2.0),
+            LearningModule("Scheduling, Deadlocks & Limits", "operating systems", "intermediate", 2.0, 2.5),
+            LearningModule("Systems Performance Tuning", "operating systems", "advanced", 3.0, 2.0),
+
+            # Computer Networks
+            LearningModule("Networking Foundations", "computer networks", "beginner", 1.5, 2.0),
+            LearningModule("HTTP, TLS & Troubleshooting", "computer networks", "intermediate", 2.5, 2.5),
+            LearningModule("Distributed Traffic Engineering", "computer networks", "advanced", 3.5, 2.0),
+
+            # React
+            LearningModule("React Components & State", "react", "beginner", 1.5, 2.0),
+            LearningModule("React Hooks & Performance", "react", "intermediate", 2.0, 2.5),
+            LearningModule("Frontend Architecture Patterns", "react", "advanced", 3.0, 2.0),
+
+            # Backend
+            LearningModule("Backend Service Basics", "backend", "beginner", 1.5, 2.0),
+            LearningModule("Reliability & Async Workflows", "backend", "intermediate", 2.5, 2.5),
+            LearningModule("Distributed Backend Tradeoffs", "backend", "advanced", 3.5, 2.0),
+
+            # API Design
+            LearningModule("HTTP API Essentials", "api design", "beginner", 1.0, 2.0),
+            LearningModule("Versioning, Errors & Rate Limits", "api design", "intermediate", 2.0, 2.5),
+            LearningModule("Advanced Interface Strategy", "api design", "advanced", 3.0, 2.0),
+
+            # Behavioral
+            LearningModule("Structured Communication Practice", "behavioral", "beginner", 1.0, 2.0),
+            LearningModule("Stakeholder & Team Communication", "behavioral", "intermediate", 1.5, 2.5),
+            LearningModule("Leadership Through Influence", "behavioral", "advanced", 2.0, 2.0),
         ]
 
     def _state_to_tuple(self, state: Dict[str, float]) -> Tuple:

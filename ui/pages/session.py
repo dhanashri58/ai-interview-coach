@@ -4,7 +4,10 @@ import random
 from utils import (
     text_to_speech_autoplay, speech_to_text, get_difficulty_level
 )
-from ui.state_manager import get_elapsed_time, process_answer, persist_completed_interview
+from ui.state_manager import (
+    get_elapsed_time, process_answer, persist_completed_interview,
+    STRIPS_AVAILABLE, PROLOG_AVAILABLE
+)
 from ui.components.media import render_avatar_panel, render_camera_pane
 
 # Setup the audio recorder globally within the module scope
@@ -27,7 +30,7 @@ TRANSITIONS = [
 
 ACKNOWLEDGEMENTS = [
     "Mmhm, okay.", "Right, I see.", "Got it, thank you.",
-    "Okay, noted.", "Alright.", "Sure, that makes sense.", 
+    "Okay, noted.", "Alright.", "Sure, that makes sense.",
     "Good, thank you for that."
 ]
 
@@ -63,16 +66,16 @@ def render():
                 <span style="color:var(--error);">&#9210;</span>
             </div>
         </div>""", unsafe_allow_html=True)
-        
+
     prog = min(answered / 10, 1.0)
     st.progress(prog)
-    
+
     # ── Intro Stage logic ──
     if stage == 'intro':
         if not st.session_state.intro_spoken:
             if 'intro_message' not in st.session_state:
                 st.session_state.intro_message = None
-                
+
                 if st.session_state.get('ai_enhanced_mode', False):
                     from utils import call_gemini
                     prompt = (
@@ -84,13 +87,13 @@ def render():
                     llm_greeting = call_gemini(prompt, feature_name="Feature 1: Voice Intro")
                     if llm_greeting:
                         st.session_state.intro_message = llm_greeting
-            
+
             base_greeting = st.session_state.intro_message or (
                 f"Hi {cand_name}, I'm an AI, your interviewer today. "
                 f"Really glad you could make it. We'll be going through some {profile.get('target_role', 'Software Engineer')} questions today. "
                 "Feel free to take your time with each answer. Ready to get started?"
             )
-            
+
             full_greeting = (
                 "Hello, can you hear me okay? Great. "
                 "Give me just one second while I get everything ready. "
@@ -122,7 +125,7 @@ def render():
                 v_label = label
                 break
         render_avatar_panel(v_label, st.session_state.mic_muted)
-    
+
     with col_cam:
         render_camera_pane(cand_name, st.session_state.cam_off)
 
@@ -156,7 +159,7 @@ def render():
     if stage == 'wrapup':
         if "wrapup_started" not in st.session_state:
             st.session_state.wrapup_started = True
-            
+
             strongest_topic = "general concepts"
             if st.session_state.answer_history:
                 topic_scores = {}
@@ -167,10 +170,10 @@ def render():
                 if topic_scores:
                     avgs = {t: sum(s)/len(s) for t, s in topic_scores.items()}
                     strongest_topic = max(avgs, key=avgs.get)
-            
+
             closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
             closing2 = f"You had some strong moments, especially on {strongest_topic}. I'll put together your feedback report now."
-            
+
             if st.session_state.get('ai_enhanced_mode', False):
                 try:
                     from utils import call_gemini
@@ -185,10 +188,10 @@ def render():
                         closing2 = llm_close
                 except Exception:
                     pass
-            
+
             full_closing = f"{closing1} {closing2}"
             text_to_speech_autoplay(full_closing)
-            
+
         st.markdown("""
             <div style="background:linear-gradient(135deg,#065f46,#047857);
                         color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
@@ -210,7 +213,7 @@ def render():
 
     # ── QUESTIONS STAGE ──
     elif stage == 'questions' and q:
-        
+
         if st.session_state.last_played_q_id != q['id']:
             if answered > 0:
                 ack = random.choice(ACKNOWLEDGEMENTS)
@@ -227,31 +230,138 @@ def render():
             sc = last_record['score']
             last_q_id = last_record['question_id']
             last_q_data = st.session_state.kb.get_question_by_id(last_q_id)
-            
+
             sc_icon = "✅" if sc >= 7 else "⚠️" if sc >= 5 else "❌"
             sc_color = "var(--success)" if sc >= 7 else "var(--warning)" if sc >= 5 else "var(--error)"
             sc_text = "Good Answer" if sc >= 7 else "Needs Details" if sc >= 5 else "Needs Practice"
-            
+
             fb = last_record['feedback']
             missing_c = len(fb.get('missing_concepts', []))
             total_concepts = len(last_q_data.get('concepts', [])) if last_q_data else 0
             matched_concepts = max(0, total_concepts - missing_c)
-            
+
+            ans_lower = last_record['answer'].lower()
+            total_kw = len(last_q_data.get('keywords', [])) if last_q_data else 0
+            matched_kw_count = sum(1 for k in last_q_data.get('keywords', []) if k.lower() in ans_lower) if last_q_data else 0
+
             st.markdown(f"""
             <div style="background:var(--card-bg); border:1px solid var(--card-border); border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
-                    <span style="color:var(--text-main); font-size:1.1rem; font-weight:600;">Your Score: {sc:.1f} / 10 {sc_icon}</span>
+                    <span style="color:var(--text-main); font-size:1.1rem; font-weight:600;">Logic Score: {sc:.1f} / 10 {sc_icon}</span>
                     <span style="color:{sc_color}; font-weight:600;">{sc_text}</span>
                 </div>
             """, unsafe_allow_html=True)
             st.progress(sc / 10.0)
-            
+
+            # --- Prolog Evaluation Row (upstream algorithm) ---
+            if (st.session_state.get("prolog_kb_toggle") and
+                st.session_state.get("prolog_kb") and
+                hasattr(st.session_state.prolog_kb, 'available') and
+                st.session_state.prolog_kb.available):
+                p_eval = st.session_state.prolog_kb.evaluate_answer_prolog(last_q_id, last_record['answer'])
+                st.markdown(f"""
+                <div style="background: rgba(99, 102, 241, 0.05); padding: 1rem; border-radius:10px; border: 1px solid rgba(99, 102, 241, 0.2); margin-top: 0.8rem;">
+                    <small style="color: var(--primary-color); text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">🧠 Prolog Logical Verification</small><br/>
+                    <div style="margin-top:0.5rem; font-size: 0.95rem;">
+                        Matched: <code style="background:rgba(99,102,241,0.1); color:var(--primary-color); padding:2px 6px; border-radius:4px;">{p_eval['matched_keywords']}</code> <br/>
+                        Confidence: <b>{int(p_eval['score_component']*100)}%</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
             st.markdown(f"""
                 <div style="display:flex; justify-content:space-between; margin-top: 0.8rem; font-size:0.9rem; color:var(--text-muted);">
-                    <span>Concepts covered: {matched_concepts}/{total_concepts}</span>
+                    <span>Keywords: {matched_kw_count}/{total_kw}</span>
+                    <span>Concepts: {matched_concepts}/{total_concepts}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            # --- Instant Coaching Tip (upstream feature) ---
+            instant_key = f"instant_tip_{last_q_id}"
+            if instant_key not in st.session_state:
+                if st.button("💡 Get Instant Coaching Tip", key=f"btn_tip_{last_q_id}"):
+                    with st.spinner("Getting your AI coaching tip..."):
+                        strengths = fb.get("strengths") or []
+                        suggestions = fb.get("suggestions") or []
+                        missing_c_list = fb.get("missing_concepts") or []
+
+                        did_well = strengths[0] if strengths else "You gave a reasonable starting answer."
+                        if suggestions and len(suggestions) > 0:
+                            improve_part = suggestions[0]
+                        elif missing_c_list:
+                            improve_part = (
+                                "Next time, make sure you explicitly talk about: "
+                                + ", ".join(missing_c_list[:3])
+                                + "."
+                            )
+                        else:
+                            improve_part = (
+                                "You can make it even stronger by adding one concrete, real-world example "
+                                "from your experience."
+                            )
+                        fallback_tip = f"{did_well} {improve_part}"
+
+                        try:
+                            from utils import call_gemini
+                            prompt = (
+                                "You are a friendly interview coach giving quick real-time advice.\n"
+                                f"The candidate just answered this interview question: '{last_q}'\n"
+                                f"Their answer was: '{last_record['answer']}'\n"
+                                f"They scored {sc}/10.\n"
+                                f"They correctly mentioned keywords based on this percentage: {matched_kw_count}/{total_kw}\n"
+                                f"They missed these concepts: {missing_c_list}\n\n"
+                                "Give ONE specific, actionable tip they can use RIGHT NOW to improve "
+                                "this answer if asked again. Start with what they did right in one "
+                                "short sentence, then give the improvement tip. Maximum 3 sentences total. "
+                                "Be conversational and encouraging, like a friend helping you prep. "
+                                "No bullet points, no headers."
+                            )
+                            tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
+                            st.session_state[instant_key] = tip or fallback_tip
+                        except Exception:
+                            st.session_state[instant_key] = fallback_tip
+                    st.rerun()
+
+            if instant_key in st.session_state:
+                st.markdown(f"""
+                <div style="background: rgba(255, 251, 235, 0.1); border-left: 4px solid var(--warning); padding:1.2rem; border-radius:12px; margin-bottom:1.5rem; border: 1px solid rgba(245,158,11,0.2);">
+                    <div style="color:var(--warning); font-weight:700; margin-bottom:0.4rem; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                        <span>💡</span> Quick AI Coaching Tip
+                    </div>
+                    <div style="color:var(--text-main); font-size:0.95rem; line-height:1.5;">{st.session_state[instant_key]}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # --- FOL Reasoning Trace (upstream algorithm) ---
+            if st.session_state.get('fol_reasoning', True) and fb.get('fol_trace'):
+                with st.expander("🔬 View First-Order Logic (FOL) Reasoning Trace", expanded=False):
+                    trace_html = []
+                    for t in fb['fol_trace']:
+                        if "TRUE" in t: color = "var(--success)"
+                        elif "PARTIAL" in t: color = "var(--warning)"
+                        elif "FALSE" in t: color = "var(--error)"
+                        else: color = "var(--primary-color)"
+                        trace_html.append(f'<div style="color:{color}; font-family:monospace; margin-bottom:4px;">{t}</div>')
+                    st.markdown("".join(trace_html), unsafe_allow_html=True)
+
+        # --- STRIPS Interview Plan Visualizer (upstream algorithm) ---
+        if st.session_state.get("strips_planner") and STRIPS_AVAILABLE:
+            with st.expander("📋 STRIPS Interview Plan Log", expanded=False):
+                col_p, col_s = st.columns([2, 1])
+                with col_p:
+                    st.markdown(st.session_state.strips_planner.get_plan_html(), unsafe_allow_html=True)
+                with col_s:
+                    current_act = st.session_state.strips_planner.get_current_action(st.session_state.answer_history)
+                    st.markdown(f"**Current Action:** `{current_act}`")
+                    st.markdown(f"**World Facts:** `{list(st.session_state.strips_planner.state)}`")
+
+        # --- Prolog Query Log (upstream algorithm) ---
+        if st.session_state.get("prolog_kb_toggle") and st.session_state.get("prolog_kb"):
+            with st.expander("📝 PROLOG Logical Verification Log", expanded=False):
+                if hasattr(st.session_state.prolog_kb, 'get_prolog_query_log'):
+                    for q_log in st.session_state.prolog_kb.get_prolog_query_log():
+                        st.code(q_log, language="prolog")
 
         diff_level = get_difficulty_level(q)
         st.markdown(f"""
@@ -259,7 +369,7 @@ def render():
                 Question {answered + 1} of 10
             </div>
         """, unsafe_allow_html=True)
-            
+
         from ui.components.metrics import render_difficulty_badge
         st.markdown(f"""
             <div style="background:var(--card-bg); color:var(--text-main); padding:1.8rem; border-radius:14px; text-align:center; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); border:1px solid var(--card-border); margin-bottom:1rem;">
@@ -281,7 +391,7 @@ def render():
                 dots_html.append('<div style="width:12px; height:12px; border-radius:50%; background:var(--primary-color); box-shadow:0 0 8px rgba(102,126,234,0.6); animation: pulse 1.5s infinite;"></div>')
             else:
                 dots_html.append('<div style="width:12px; height:12px; border-radius:50%; background:var(--card-border); border:1px solid #cbd5e1;"></div>')
-        
+
         st.markdown(f"""<div style="display:flex; justify-content:center; gap:6px; margin-bottom:2rem;">{"".join(dots_html)}</div>""", unsafe_allow_html=True)
 
         st.markdown("#### 🎤 Your Answer")

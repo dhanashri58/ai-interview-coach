@@ -1,398 +1,204 @@
 """
 Intelligent Question Selection using Informed Search (Unit III)
-Implements Best-First Search with heuristics
+Implements a role-aware Best-First Search heuristic with graceful fallbacks.
 """
 
-import random
-from typing import List, Dict, Any, Optional, Tuple
-import numpy as np
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 
 class QuestionSelector:
     def __init__(self, knowledge_base):
         self.kb = knowledge_base
-        self.question_history = []  # Stores IDs of questions already asked
-        self.performance_history = []
-        self.difficulty_scores = {"beginner": 1, "intermediate": 2, "advanced": 3}
-        
+        self.question_history: List[int] = []
+        self.performance_history: List[Dict[str, Any]] = []
+
     def select_next_question(self, user_profile: Dict, previous_answers: List[Dict]) -> Optional[Dict]:
-        """
-        Select next question using heuristic search (Best-First Search approach)
-        NEVER repeats a question that has been asked before
-        """
-        # Get all available questions
         candidate_questions = self._get_candidate_questions(user_profile)
-        
-        # FILTER OUT QUESTIONS THAT HAVE BEEN ASKED BEFORE
-        available_questions = []
-        for q in candidate_questions:
-            q_id = q.get('id')
-            if q_id and q_id not in self.question_history:
-                available_questions.append(q)
-        
-        # If no available questions, return None (interview complete)
+        available_questions = [q for q in candidate_questions if q.get("id") not in self.question_history]
+
+        if not available_questions:
+            available_questions = [
+                q for q in self.kb.get_all_questions() if q.get("id") not in self.question_history
+            ]
         if not available_questions:
             return None
-        
-        # Score each available question using heuristic
+
         scored_questions = []
-        for q in available_questions:
-            score = self._calculate_heuristic(q, user_profile, previous_answers)
-            scored_questions.append((score, q))
-        
-        # Sort by score (highest first) and return best
-        scored_questions.sort(key=lambda x: x[0], reverse=True)
-        
-        if scored_questions:
-            # Create a shallow copy so we don't unexpectedly overwrite the raw KB dictionary
-            selected = scored_questions[0][1].copy()
-            
-            # Feature 4: Dynamic Question Generation
-            try:
-                import streamlit as st
-                if st.session_state.get('ai_enhanced_mode', False):
-                    from utils import call_gemini
-                    
-                    topic = selected.get("topic", "general")
-                    difficulty = selected.get("difficulty", "intermediate")
-                    role = user_profile.get("target_role", "candidate")
-                    concepts = selected.get("concepts", [])
-                    top_concept = concepts[0] if concepts else topic
-                    
-                    prompt = (
-                        f"You are a technical interviewer. Generate exactly ONE interview question "
-                        f"about {topic} at {difficulty} level for a {role} candidate.\n"
-                        f"The question must test understanding of {top_concept}.\n"
-                        f"Return ONLY the question text. No numbering, no explanation, no quotes.\n"
-                        f"Maximum 25 words."
-                    )
-                    
-                    llm_question = call_gemini(prompt, feature_name="Feature 4: Dynamic Question")
-                    if llm_question:
-                        selected["question"] = llm_question
-                        if "question_text" in selected:
-                            selected["question_text"] = llm_question
-            except Exception as e:
-                print("Failed to generate LLM dynamic question:", e)
-                
-            # Add to history so it won't be asked again
-            if selected.get('id'):
-                self.question_history.append(selected['id'])
-            return selected
-        
-        return None  # No questions available
-    
-    def _get_default_question(self) -> Dict:
-        """Return a default question if no questions found"""
-        # Check if default question was already asked
-        if 1 in self.question_history:
-            # Find another default question
-            for q_id in [2, 3, 4, 5]:
-                if q_id not in self.question_history:
-                    return {
-                        "id": q_id,
-                        "question": f"What is variable in Python? Explain with example {q_id}.",
-                        "topic": "python",
-                        "difficulty_level": "beginner",
-                        "difficulty": "beginner",
-                        "keywords": ["variable", "assignment", "data", "type", "value"],
-                        "concepts": ["variables", "data types", "assignment"]
-                    }
-        
-        return {
-            "id": 1,
-            "question": "What is a list in Python? Explain with example.",
-            "topic": "python",
-            "difficulty_level": "beginner",
-            "difficulty": "beginner",
-            "keywords": ["mutable", "ordered", "sequence", "collection", "[]"],
-            "concepts": ["mutable", "indexing", "slicing"]
-        }
-    
+        for question in available_questions:
+            score = self._calculate_heuristic(question, user_profile, previous_answers)
+            scored_questions.append((score, question))
+
+        scored_questions.sort(key=lambda item: item[0], reverse=True)
+        selected = dict(scored_questions[0][1])
+
+        try:
+            import streamlit as st
+
+            if st.session_state.get("ai_enhanced_mode", False):
+                from utils import call_gemini
+
+                topic = str(selected.get("topic", "general"))
+                difficulty = str(selected.get("difficulty", "intermediate"))
+                role = str(user_profile.get("target_role", "candidate"))
+                concepts = selected.get("concepts", [])
+                anchor = str(concepts[0]) if concepts else topic
+                prompt = (
+                    f"You are a technical interviewer. Generate exactly one interview question about "
+                    f"{topic} at {difficulty} level for a {role} candidate. "
+                    f"Anchor it around {anchor}. Return only the question text in under 28 words."
+                )
+                llm_question = call_gemini(prompt, feature_name="Feature 4: Dynamic Question")
+                if llm_question:
+                    selected["question"] = llm_question
+        except Exception:
+            pass
+
+        if selected.get("id") is not None:
+            self.question_history.append(selected["id"])
+        return selected
+
     def _calculate_heuristic(self, question: Dict, profile: Dict, previous_answers: List[Dict]) -> float:
-        """
-        Heuristic function h(q) = w1*relevance + w2*difficulty_match + w3*novelty + w4*weakness_focus
-        """
-        # Weights for different factors
-        w1, w2, w3, w4 = 0.3, 0.3, 0.2, 0.2
-        
         relevance = self._calculate_relevance(question, profile)
         difficulty_match = self._calculate_difficulty_match(question, profile)
         novelty = self._calculate_novelty(question)
         weakness_focus = self._calculate_weakness_focus(question, previous_answers)
-        
-        score = (w1 * relevance + w2 * difficulty_match + 
-                w3 * novelty + w4 * weakness_focus)
-        
-        return score
-    
+        topic_balance = self._calculate_topic_balance(question, previous_answers)
+        return float(
+            (0.34 * relevance)
+            + (0.24 * difficulty_match)
+            + (0.16 * novelty)
+            + (0.18 * weakness_focus)
+            + (0.08 * topic_balance)
+        )
+
     def _calculate_relevance(self, question: Dict, profile: Dict) -> float:
-        """Calculate how relevant question is to user's target role"""
-        target_role = profile.get("target_role", "").lower() if profile else ""
-        
-        # Map roles to topics
-        role_topics = {
-            "software engineer": ["python", "dsa", "algorithms"],
-            "data scientist": ["python", "sql", "machine learning"],
-            "backend developer": ["python", "sql", "java"],
-            "frontend developer": ["javascript", "react", "html"],
-            "devops engineer": ["python", "linux", "aws"],
-            "data analyst": ["sql", "python", "excel"],
-            "machine learning engineer": ["python", "machine learning", "algorithms"],
-            "full stack developer": ["python", "javascript", "sql", "react"],
-            "cloud architect": ["aws", "python", "linux"],
-            "product manager": ["general", "business", "analytics"]
-        }
-        
-        # Get question topic
-        question_topic = question.get("topic", "").lower()
-        
-        # Check if question's topic is relevant to target role
-        for role, topics in role_topics.items():
-            if role in target_role:
-                if question_topic in topics:
-                    return 1.0
-                elif any(topic in question_topic for topic in topics):
-                    return 0.7
-        
-        return 0.5
-    
+        topic_weights = self.kb.get_topic_weight_map(profile)
+        question_topic = str(question.get("topic", "")).lower()
+        base = topic_weights.get(question_topic, 0.2)
+
+        target_role = str(profile.get("target_role", "")).lower()
+        role_tags = [str(tag).lower() for tag in question.get("role_tags", [])]
+        if target_role and target_role in role_tags:
+            base += 0.2
+
+        selected_skills = {str(skill).lower() for skill in profile.get("skills", [])}
+        skill_tags = {str(tag).lower() for tag in question.get("skill_tags", [])}
+        overlap = selected_skills.intersection(skill_tags)
+        if overlap:
+            base += min(0.2, 0.07 * len(overlap))
+
+        return float(min(1.0, base))
+
     def _calculate_difficulty_match(self, question: Dict, profile: Dict) -> float:
-        """Calculate how well question difficulty matches user's level"""
-        user_level = profile.get("experience_level", "entry") if profile else "entry"
-        
-        # Normalize user level
-        if "entry" in user_level.lower() or "0-2" in user_level.lower():
-            user_level = "beginner"
-        elif "mid" in user_level.lower() or "3-5" in user_level.lower():
-            user_level = "intermediate"
-        elif "senior" in user_level.lower() or "5+" in user_level.lower():
-            user_level = "advanced"
+        user_level = str(profile.get("experience_level", "entry")).lower()
+        if "entry" in user_level:
+            expected = "beginner"
+        elif "mid" in user_level:
+            expected = "intermediate"
         else:
-            user_level = "beginner"
-        
-        # Get question difficulty - check multiple possible keys
-        q_difficulty = question.get("difficulty_level") or question.get("difficulty") or "beginner"
-        
-        # Score based on difficulty match
-        difficulty_scores = {"beginner": 1, "intermediate": 2, "advanced": 3}
-        user_score = difficulty_scores.get(user_level, 1)
-        q_score = difficulty_scores.get(q_difficulty, 1)
-        
-        # Perfect match gives 1.0, one level difference gives 0.7, two levels gives 0.3
-        diff = abs(user_score - q_score)
-        if diff == 0:
+            expected = "advanced"
+
+        diff_map = {"beginner": 1, "intermediate": 2, "advanced": 3}
+        target_value = diff_map.get(expected, 1)
+        question_value = diff_map.get(str(question.get("difficulty", "beginner")).lower(), 1)
+        distance = abs(target_value - question_value)
+        if distance == 0:
             return 1.0
-        elif diff == 1:
-            return 0.7
-        else:
-            return 0.3
-    
+        if distance == 1:
+            return 0.72
+        return 0.38
+
     def _calculate_novelty(self, question: Dict) -> float:
-        """Calculate novelty - prefer questions not asked recently"""
-        q_id = question.get("id")
-        
-        if q_id in self.question_history:
-            return 0.0  # Never select already asked questions
-        elif q_id in self.question_history[-3:]:  # Last 3 questions
-            return 0.2
-        elif q_id in self.question_history[-5:]:  # Last 5 questions
-            return 0.5
-        else:
-            return 1.0
-    
+        question_id = question.get("id")
+        if question_id in self.question_history:
+            return 0.0
+
+        history_length = len(self.question_history)
+        recent_slice = self.question_history[max(0, history_length - 5) : history_length]
+        if question_id in recent_slice:
+            return 0.3
+        return 1.0
+
     def _calculate_weakness_focus(self, question: Dict, previous_answers: List[Dict]) -> float:
-        """Focus on topics where user performed poorly recently, and move away from topics where user performed well"""
         if not previous_answers:
             return 0.5
-            
-        q_topic = question.get("topic", "").lower()
-        
-        # Find the most recent score for this question's topic
-        latest_score = None
+
+        question_topic = str(question.get("topic", "")).lower()
         for answer in reversed(previous_answers):
-            topic = answer.get("topic", "").lower()
-            if topic == q_topic or topic in q_topic or q_topic in topic:
-                latest_score = answer.get("score", 5)
-                break
-                
-        if latest_score is None:
-            # Topic hasn't been tested yet
+            if str(answer.get("topic", "")).lower() == question_topic:
+                latest_score = float(answer.get("score", 5.0))
+                return float(max(0.0, min(1.0, 1.0 - (latest_score / 10.0))))
+        return 0.5
+
+    def _calculate_topic_balance(self, question: Dict, previous_answers: List[Dict]) -> float:
+        if len(previous_answers) < 2:
+            return 0.8
+
+        recent_topics = [str(answer.get("topic", "")).lower() for answer in previous_answers[-2:]]
+        question_topic = str(question.get("topic", "")).lower()
+        if recent_topics.count(question_topic) >= 2:
+            return 0.2
+        if recent_topics and recent_topics[-1] == question_topic:
             return 0.5
-            
-        # Score goes UP (higher priority) if latest score was bad (< 6)
-        # Score goes DOWN (lower priority) if latest score was good (>= 6)
-        # Latest_score is between 0 and 10.
-        # weakness_focus ranges from 1.0 (for score 0) to 0.0 (for score 10)
-        focus = 1.0 - (latest_score / 10.0)
-        
-        # Bound it just in case
-        return max(0.0, min(1.0, focus))
-        
-    def get_predicted_questions(self, user_profile: Dict, previous_answers: List[Dict], n: int = 3) -> List[Tuple[float, Dict]]:
-        """
-        Returns the top N candidate questions with their heuristic scores.
-        Used for the UI Question Path panel to show the AI's internal decision process.
-        """
-        # Get all candidate questions
-        candidate_questions = self._get_candidate_questions(user_profile)
-        
-        # Filter out already asked questions
-        available_questions = []
-        for q in candidate_questions:
-            q_id = q.get('id')
-            if q_id and q_id not in self.question_history:
-                available_questions.append(q)
-                
-        if not available_questions:
+        return 1.0
+
+    def get_predicted_questions(
+        self, user_profile: Dict, previous_answers: List[Dict], n: int = 3
+    ) -> List[Tuple[float, Dict]]:
+        candidates = self._get_candidate_questions(user_profile)
+        available = [q for q in candidates if q.get("id") not in self.question_history]
+        if not available:
+            available = [q for q in self.kb.get_all_questions() if q.get("id") not in self.question_history]
+        if not available:
             return []
-            
-        # Score each available question using heuristic
-        scored_questions = []
-        for q in available_questions:
-            score = self._calculate_heuristic(q, user_profile, previous_answers)
-            scored_questions.append((score, q))
-            
-        # Sort by score (highest first)
-        scored_questions.sort(key=lambda x: x[0], reverse=True)
-        
-        return scored_questions[:n]
-    
-    def _get_initial_question(self, profile: Dict) -> Optional[Dict]:
-        """Get first question based on user profile"""
-        if not profile:
-            return self._get_default_question()
-        
-        target_role = profile.get("target_role", "").lower()
-        
-        # Determine topic based on role
-        if "data" in target_role:
-            topic = "sql"
-        elif "frontend" in target_role:
-            topic = "javascript"
-        else:
-            topic = "python"  # Default
-        
-        level = profile.get("experience_level", "entry")
-        if "entry" in level.lower() or "0-2" in level.lower():
-            difficulty = "beginner"
-        elif "mid" in level.lower() or "3-5" in level.lower():
-            difficulty = "intermediate"
-        else:
-            difficulty = "advanced"
-        
-        # Try to get questions from knowledge base
-        questions = self.kb.get_questions_by_topic(topic, difficulty)
-        
-        # Filter out already asked questions
-        available_questions = []
-        if questions:
-            for q in questions:
-                if q.get('id') not in self.question_history:
-                    available_questions.append(q)
-        
-        if available_questions:
-            selected = random.choice(available_questions)
-            self.question_history.append(selected.get('id'))
-            return selected
-        
-        # Try with different difficulty if no questions found
-        difficulties = ["beginner", "intermediate", "advanced"]
-        for diff in difficulties:
-            if diff != difficulty:
-                questions = self.kb.get_questions_by_topic(topic, diff)
-                available_questions = []
-                if questions:
-                    for q in questions:
-                        if q.get('id') not in self.question_history:
-                            available_questions.append(q)
-                if available_questions:
-                    selected = random.choice(available_questions)
-                    self.question_history.append(selected.get('id'))
-                    return selected
-        
-        return self._get_default_question()
-    
+
+        scored = []
+        for question in available:
+            score = self._calculate_heuristic(question, user_profile, previous_answers)
+            scored.append((score, question))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return scored[:n]
+
     def _get_candidate_questions(self, profile: Dict) -> List[Dict]:
-        """Get all possible questions based on profile"""
-        candidates = []
-        
-        if not profile:
-            # Return default questions
-            return [self._get_default_question()]
-        
-        target_role = profile.get("target_role", "").lower()
-        
-        # Determine topics to consider based on role
-        if "data" in target_role:
-            topics = ["sql", "python"]
-        elif "frontend" in target_role:
-            topics = ["javascript", "react"]
-        elif "devops" in target_role:
-            topics = ["python", "linux"]
-        elif "full stack" in target_role:
-            topics = ["python", "javascript", "sql"]
-        else:
-            topics = ["python", "dsa", "sql"]  # Default topics
-        
-        # Get user level
-        level = profile.get("experience_level", "entry")
-        if "entry" in level.lower() or "0-2" in level.lower():
-            user_level = "beginner"
-            levels_to_try = ["beginner", "intermediate"]
-        elif "mid" in level.lower() or "3-5" in level.lower():
-            user_level = "intermediate"
-            levels_to_try = ["intermediate", "beginner", "advanced"]
-        else:
-            user_level = "advanced"
-            levels_to_try = ["advanced", "intermediate"]
-        
-        # Collect questions from knowledge base
-        for topic in topics:
-            for level in levels_to_try:
-                try:
-                    questions = self.kb.get_questions_by_topic(topic, level)
-                    if questions and isinstance(questions, list):
-                        for q in questions:
-                            # Ensure each question has required fields
-                            if isinstance(q, dict):
-                                if 'id' not in q:
-                                    q['id'] = hash(q.get('question', '')) % 10000
-                                if 'difficulty' not in q:
-                                    q['difficulty'] = level
-                                if 'difficulty_level' not in q:
-                                    q['difficulty_level'] = level
-                                
-                                # Only add if not already in history
-                                if q.get('id') not in self.question_history:
-                                    candidates.append(q)
-                except Exception as e:
-                    print(f"Error getting questions for {topic}/{level}: {e}")
-                    continue
-        
-        # Remove duplicates based on question id
-        unique_candidates = []
+        resolved_topics = self.kb.resolve_topics_from_profile(profile)
+        candidates: List[Dict] = []
+
+        for topic in resolved_topics:
+            candidates.extend(self.kb.get_questions_by_topic(topic))
+
+        if len(candidates) < 15:
+            role = str(profile.get("target_role", "")).lower()
+            for question in self.kb.get_all_questions():
+                role_tags = [str(tag).lower() for tag in question.get("role_tags", [])]
+                if role and role in role_tags:
+                    candidates.append(question)
+
+        if not candidates:
+            candidates = self.kb.get_all_questions()
+
+        deduped: List[Dict] = []
         seen_ids = set()
-        for q in candidates:
-            q_id = q.get('id')
-            if q_id and q_id not in seen_ids:
-                seen_ids.add(q_id)
-                unique_candidates.append(q)
-        
-        return unique_candidates
-    
+        for question in candidates:
+            qid = question.get("id")
+            if qid not in seen_ids:
+                seen_ids.add(qid)
+                deduped.append(question)
+        return deduped
+
     def update_performance(self, question_id: int, score: float, topic: str):
-        """Update performance history for adaptive learning"""
-        self.performance_history.append({
-            "q_id": question_id,
-            "score": score,
-            "topic": topic,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-    
+        self.performance_history.append(
+            {
+                "q_id": question_id,
+                "score": float(score),
+                "topic": topic,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+
     def reset_history(self):
-        """Reset question history for a new interview session"""
         self.question_history = []
         self.performance_history = []
-
-

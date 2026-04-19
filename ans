@@ -1,0 +1,148 @@
+# A list in Python is a collection of items stored in a single variable and written inside square brackets [ ].
+
+# Example:
+
+# numbers = [10, 20, 30, 40]
+# print(numbers)
+
+# Here, numbers is a list that stores multiple values (10, 20, 30, 40) in one variable.
+
+# What is the difference between tuple and list
+# The main difference between list and tuple in Python is mutability.
+
+# List: Mutable (can be changed) and written using square brackets [ ].
+
+# Tuple: Immutable (cannot be changed) and written using parentheses ( ).
+
+# Example:
+
+# # List
+# my_list = [1, 2, 3]
+# my_list[0] = 10   # Allowed
+
+# # Tuple
+# my_tuple = (1, 2, 3)
+# my_tuple[0] = 10  # Not allowed
+
+# So, lists can be modified, but tuples cannot be changed after creation.
+
+# Explain if-else statement with example
+# An if-else statement in Python is used to make decisions by executing different code based on a condition.
+
+# Example:
+
+# age = 18
+
+# if age >= 18:
+#     print("You can vote")
+# else:
+#     print("You cannot vote")
+
+# If the condition age >= 18 is true, it prints "You can vote"; otherwise it prints "You cannot vote".
+
+# Explain decorators in Python with example.
+# A decorator in Python is a function that adds extra functionality to another function without changing its original code.
+
+# Example:
+
+# def decorator_func(func):
+#     def wrapper():
+#         print("Before function call")
+#         func()
+#         print("After function call")
+#     return wrapper
+
+# @decorator_func
+# def say_hello():
+#     print("Hello")
+
+# say_hello()
+
+# Output:
+
+# Before function call
+# Hello
+# After function call
+
+# Here, the decorator adds extra behavior before and after the say_hello() function runs
+
+# What is list comprehension? Provide examples inshort
+# List comprehension is a short and simple way to create a list in Python using a single line of code.
+
+# Example:
+
+# numbers = [x for x in range(5)]
+# print(numbers)
+
+# Output: [0, 1, 2, 3, 4]
+
+# Example with condition:
+
+# even = [x for x in range(10) if x % 2 == 0]
+# print(even)
+
+# Output: [0, 2, 4, 6, 8]
+
+# So, list comprehension creates lists quickly using a compact syntax.
+
+# What is an array? Explain time complexity of array operations
+# An **array** is a data structure that stores **multiple elements of the same type in contiguous memory locations** and can be accessed using an **index**.
+
+# ### Time Complexity of Array Operations
+
+# * **Access (arr[i])** – **O(1)** → Direct access using index.
+# * **Insertion** – **O(n)** → Elements may need to be shifted.
+# * **Deletion** – **O(n)** → Elements may need to be shifted after deletion.
+# * **Traversal** – **O(n)** → Need to visit each element once.
+
+# So, arrays provide **fast access but slower insertion and deletion operations**.
+
+# Explain binary search algorithm with example
+# **Binary Search** is a searching algorithm used to find an element in a **sorted array** by repeatedly dividing the search range into half.
+
+# **Example:**
+# Array: `[2, 5, 8, 12, 16]`
+# Search element: `12`
+
+# Steps:
+
+# 1. Find the **middle element** → `8`.
+# 2. Since `12 > 8`, search in the **right half**.
+# 3. Next middle element → `12`.
+# 4. Element found.
+
+# **Time Complexity:** **O(log n)** (very fast for large sorted lists).
+
+
+# What is SQL and what are its main types of commands?
+# **SQL (Structured Query Language)** is a language used to **create, manage, and retrieve data from databases**.
+
+# **Main types of SQL commands:**
+
+# 1. **DDL (Data Definition Language)** – Used to define database structure (e.g., `CREATE`, `ALTER`, `DROP`).
+# 2. **DML (Data Manipulation Language)** – Used to modify data (e.g., `INSERT`, `UPDATE`, `DELETE`).
+# 3. **DQL (Data Query Language)** – Used to retrieve data (e.g., `SELECT`).
+# 4. **DCL (Data Control Language)** – Used to control access (e.g., `GRANT`, `REVOKE`).
+# 5. **TCL (Transaction Control Language)** – Used to manage transactions (e.g., `COMMIT`, `ROLLBACK`).
+
+# Explain SELECT statement with example
+# The **SELECT statement** in SQL is used to **retrieve data from a database table**.
+
+# **Example:**
+
+# ```sql
+# SELECT name, age
+# FROM students;
+# ```
+
+# This query **displays the `name` and `age` columns from the `students` table**.
+
+# What is JOIN? Explain different types of JOINs
+# A **JOIN** in SQL is used to **combine data from two or more tables based on a related column**.
+
+# ### Types of JOINs
+
+# 1. **INNER JOIN** – Returns only the **matching records from both tables**.
+# 2. **LEFT JOIN (LEFT OUTER JOIN)** – Returns **all records from the left table** and matching records from the right table.
+# 3. **RIGHT JOIN (RIGHT OUTER JOIN)** – Returns **all records from the right table** and matching records from the left table.
+# 4. **FULL JOIN (FULL OUTER JOIN)** – Returns **all records from both tables**, with matching where possible.

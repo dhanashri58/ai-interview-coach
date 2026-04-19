@@ -393,6 +393,38 @@ class PerformanceReport:
                 {"name": "Java Tutorial", "type": "tutorial", "url": "https://docs.oracle.com/javase/tutorial/"},
                 {"name": "Java Practice", "type": "interactive", "url": "https://www.hackerrank.com/domains/java"}
             ],
+            "oop": [
+                {"name": "Refactoring Guru", "type": "guide", "url": "https://refactoring.guru/design-patterns"},
+                {"name": "SOLID Principles Overview", "type": "guide", "url": "https://stackify.com/solid-design-principles/"}
+            ],
+            "dbms": [
+                {"name": "Database System Concepts Notes", "type": "guide", "url": "https://www.geeksforgeeks.org/dbms/"},
+                {"name": "PostgreSQL Documentation", "type": "documentation", "url": "https://www.postgresql.org/docs/"}
+            ],
+            "operating systems": [
+                {"name": "Operating Systems Notes", "type": "guide", "url": "https://www.geeksforgeeks.org/operating-systems/"},
+                {"name": "Linux Journey", "type": "tutorial", "url": "https://linuxjourney.com/"}
+            ],
+            "computer networks": [
+                {"name": "Computer Networking Basics", "type": "guide", "url": "https://www.geeksforgeeks.org/computer-network-tutorials/"},
+                {"name": "MDN HTTP Overview", "type": "documentation", "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview"}
+            ],
+            "react": [
+                {"name": "React Documentation", "type": "documentation", "url": "https://react.dev/"},
+                {"name": "Epic React Articles", "type": "tutorial", "url": "https://kentcdodds.com/blog"}
+            ],
+            "backend": [
+                {"name": "System Design Primer", "type": "guide", "url": "https://github.com/donnemartin/system-design-primer"},
+                {"name": "Backend Performance Checklist", "type": "guide", "url": "https://12factor.net/"}
+            ],
+            "api design": [
+                {"name": "REST API Tutorial", "type": "guide", "url": "https://restfulapi.net/"},
+                {"name": "HTTP Semantics RFC", "type": "documentation", "url": "https://httpwg.org/specs/rfc9110.html"}
+            ],
+            "behavioral": [
+                {"name": "STAR Interview Method", "type": "guide", "url": "https://www.themuse.com/advice/star-interview-method"},
+                {"name": "Behavioral Interview Questions", "type": "practice", "url": "https://www.indeed.com/career-advice/interviewing/behavioral-interview-questions"}
+            ],
             "javascript": [
                 {"name": "MDN Web Docs", "type": "documentation", "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript"},
                 {"name": "JavaScript.info", "type": "tutorial", "url": "https://javascript.info/"}
