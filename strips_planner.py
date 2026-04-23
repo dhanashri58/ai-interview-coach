@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional
+import html as _html
 
 @dataclass
 class STRIPSAction:
@@ -75,7 +76,10 @@ class GoalStackPlanner:
         """
         Returns an HTML string showing the plan as a vertical timeline.
         """
-        html = '<div style="font-family: sans-serif; padding: 10px;">'
+        def _esc(value) -> str:
+            return _html.escape(str(value), quote=True)
+
+        html = '<div style="font-family:sans-serif;padding:10px;">'
         current_action = self.get_current_action([]) # Placeholder for determining current
         
         found_current = False
@@ -90,12 +94,15 @@ class GoalStackPlanner:
             if not is_completed and not found_current:
                 found_current = True
             
-            html += f"""
-            <div style="display: flex; align-items: center; margin-bottom: 8px; color: {color};">
-                <span style="margin-right: 10px;">{icon}</span>
-                <span style="font-weight: 500;">{name.replace('_', ' ').title()}</span>
-            </div>
-            """
+            safe_label = _esc(str(name).replace('_', ' ').title())
+            # Avoid leading whitespace so Streamlit's markdown parser
+            # consistently treats this as an HTML block.
+            html += (
+                f'<div style="display:flex;align-items:center;margin-bottom:8px;color:{color};">'
+                f'<span style="margin-right:10px;">{icon}</span>'
+                f'<span style="font-weight:500;">{safe_label}</span>'
+                f'</div>'
+            )
         html += "</div>"
         return html
 

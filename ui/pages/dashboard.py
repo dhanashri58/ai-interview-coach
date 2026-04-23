@@ -1,11 +1,15 @@
 import streamlit as st
 import pandas as pd
+import html as _html
 from ui.components import render_metric_card, plot_score_trend, plot_topic_performance
 
 def _safe_level(val):
     if not val:
         return '-'
     return str(val).replace('_', ' ').title()
+
+def _esc(value):
+    return _html.escape(str(value), quote=True)
 
 def render():
     st.markdown('<h1 style="color:var(--text-main); font-size:2.2rem; margin-bottom:0.5rem;">📊 Performance Dashboard</h1>', unsafe_allow_html=True)
@@ -62,7 +66,7 @@ def render():
     
     with tab_overview:
         if latest_report and 'detailed_analysis' in latest_report:
-            st.markdown(f"### Latest Interview Analytics (Session #{latest_report_id})")
+            st.markdown(f"### Latest Interview Analytics (Session #{_esc(latest_report_id)})")
             col_chart1, col_chart2 = st.columns(2)
             with col_chart1:
                 prog_data = latest_report['detailed_analysis'].get('progress_over_time')
