@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import random
+import html as _html
 from utils import (
     text_to_speech_autoplay, speech_to_text, get_difficulty_level
 )
@@ -34,6 +35,9 @@ ACKNOWLEDGEMENTS = [
     "Good, thank you for that."
 ]
 
+def _esc(value):
+    return _html.escape(str(value), quote=True)
+
 def render():
     if not st.session_state.interview_active:
         st.session_state.current_page = 'start_interview'
@@ -49,14 +53,16 @@ def render():
     # ── Live stats & Meeting header bar ──
     mic_icon = "🔇" if st.session_state.mic_muted else "🎤"
     cam_icon = "📷" if st.session_state.cam_off   else "📹"
+    safe_role = _esc(profile.get('target_role', ''))
+    safe_cand_name = _esc(cand_name)
     st.markdown(f"""
         <div class="meet-header">
             <div>
                 <span class="meet-title">
                     <span class="status-dot dot-live"></span>
-                    AI Interview Session &mdash; {profile.get('target_role','')}
+                    AI Interview Session &mdash; {safe_role}
                 </span><br>
-                <span class="meet-meta">Candidate: {cand_name} &nbsp;|&nbsp;
+                <span class="meet-meta">Candidate: {safe_cand_name} &nbsp;|&nbsp;
                     Q{answered + 1}/10 &nbsp;|&nbsp; &#9201; {get_elapsed_time()}
                 </span>
             </div>
@@ -263,7 +269,7 @@ def render():
                 <div style="background: rgba(99, 102, 241, 0.05); padding: 1rem; border-radius:10px; border: 1px solid rgba(99, 102, 241, 0.2); margin-top: 0.8rem;">
                     <small style="color: var(--primary-color); text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">🧠 Prolog Logical Verification</small><br/>
                     <div style="margin-top:0.5rem; font-size: 0.95rem;">
-                        Matched: <code style="background:rgba(99,102,241,0.1); color:var(--primary-color); padding:2px 6px; border-radius:4px;">{p_eval['matched_keywords']}</code> <br/>
+                        Matched: <code style="background:rgba(99,102,241,0.1); color:var(--primary-color); padding:2px 6px; border-radius:4px;">{_esc(p_eval['matched_keywords'])}</code> <br/>
                         Confidence: <b>{int(p_eval['score_component']*100)}%</b>
                     </div>
                 </div>
@@ -329,7 +335,7 @@ def render():
                     <div style="color:var(--warning); font-weight:700; margin-bottom:0.4rem; font-size:1rem; display:flex; align-items:center; gap:8px;">
                         <span>💡</span> Quick AI Coaching Tip
                     </div>
-                    <div style="color:var(--text-main); font-size:0.95rem; line-height:1.5;">{st.session_state[instant_key]}</div>
+                    <div style="color:var(--text-main); font-size:0.95rem; line-height:1.5;">{_esc(st.session_state[instant_key])}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -342,7 +348,7 @@ def render():
                         elif "PARTIAL" in t: color = "var(--warning)"
                         elif "FALSE" in t: color = "var(--error)"
                         else: color = "var(--primary-color)"
-                        trace_html.append(f'<div style="color:{color}; font-family:monospace; margin-bottom:4px;">{t}</div>')
+                        trace_html.append(f'<div style="color:{color}; font-family:monospace; margin-bottom:4px;">{_esc(t)}</div>')
                     st.markdown("".join(trace_html), unsafe_allow_html=True)
 
         # --- STRIPS Interview Plan Visualizer (upstream algorithm) ---
@@ -371,12 +377,14 @@ def render():
         """, unsafe_allow_html=True)
 
         from ui.components.metrics import render_difficulty_badge
+        safe_question = _esc(q['question'])
+        safe_topic = _esc(q.get('topic', 'General').title())
         st.markdown(f"""
             <div style="background:var(--card-bg); color:var(--text-main); padding:1.8rem; border-radius:14px; text-align:center; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); border:1px solid var(--card-border); margin-bottom:1rem;">
-                <div style="font-size:20px; font-weight:600; line-height:1.6; margin-bottom:1rem;">{q['question']}</div>
+                <div style="font-size:20px; font-weight:600; line-height:1.6; margin-bottom:1rem;">{safe_question}</div>
                 <div style="display:inline-block; margin-top:0.4rem;">
                     {render_difficulty_badge(diff_level)}
-                    <span style="font-size:0.8rem; color:var(--text-muted); margin-left:10px;">📌 Topic: {q.get('topic','General').title()}</span>
+                    <span style="font-size:0.8rem; color:var(--text-muted); margin-left:10px;">📌 Topic: {safe_topic}</span>
                 </div>
             </div>""", unsafe_allow_html=True)
 
@@ -411,7 +419,7 @@ def render():
                             <div style="background:rgba(16,185,129,0.1);border:1px solid var(--success);
                                         border-radius:10px;padding:0.9rem;margin:0.5rem 0;">
                                 <div style="color:var(--success);font-size:0.8rem;font-weight:600;">✅ Transcribed answer:</div>
-                                <div style="color:var(--text-main);margin-top:4px;">{voice_answer}</div>
+                                <div style="color:var(--text-main);margin-top:4px;">{_esc(voice_answer)}</div>
                             </div>""", unsafe_allow_html=True)
                     else:
                         st.warning("⚠️ Could not transcribe. Please speak clearly or use the text box below.")

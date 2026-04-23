@@ -1,5 +1,9 @@
 import streamlit as st
 from datetime import datetime
+import html as _html
+
+def _esc(value):
+    return _html.escape(str(value), quote=True)
 
 def render():
     st.markdown('<h1 style="color:var(--text-main); font-size:2.2rem; margin-bottom:1.5rem;">⚙️ Settings & Profile</h1>', unsafe_allow_html=True)
@@ -79,8 +83,8 @@ def render():
         st.markdown(f"""
             <div style="background:var(--card-bg); padding:1.25rem; border-radius:12px; border:1px solid var(--card-border); margin-bottom:1rem;">
                 <p style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.5rem;">Signed in as</p>
-                <p style="color:var(--text-main); font-weight:600; font-size:1.1rem; margin:0;">{user.get('name', 'User')}</p>
-                <p style="color:var(--text-muted); font-size:0.85rem; margin:0.2rem 0 0;">{user.get('email', '')}</p>
+                <p style="color:var(--text-main); font-weight:600; font-size:1.1rem; margin:0;">{_esc(user.get('name', 'User'))}</p>
+                <p style="color:var(--text-muted); font-size:0.85rem; margin:0.2rem 0 0;">{_esc(user.get('email', ''))}</p>
             </div>
         """, unsafe_allow_html=True)
 

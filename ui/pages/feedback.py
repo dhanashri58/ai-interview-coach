@@ -8,6 +8,9 @@ from datetime import datetime
 from ui.components.metrics import render_metric_card, render_difficulty_badge
 from ui.components.charts import plot_score_trend, plot_topic_performance, plot_difficulty_breakdown
 
+def _esc(value):
+    return _html.escape(str(value), quote=True)
+
 
 def _score_color(sc):
     if sc >= 7: return "#10b981"
@@ -54,7 +57,7 @@ def render():
             <h1 style="font-size:2.2rem;margin:0 0 0.5rem; font-weight:700;">🎉 Interview Complete!</h1>
             <p style="opacity:0.9;margin:0; font-size:1.1rem;">
                 Comprehensive performance analysis for
-                <strong>{report['user_profile'].get('name','Candidate')}</strong>
+                <strong>{_esc(report['user_profile'].get('name','Candidate'))}</strong>
             </p>
             <div style="margin-top:1.5rem; display:inline-block; background:rgba(255,255,255,0.15); padding:0.8rem 2.5rem; border-radius:14px; backdrop-filter:blur(4px);">
                 <div style="font-size:2.8rem; font-weight:800; letter-spacing:-1px;">{score}<span style="font-size:1.2rem; opacity:0.7;">/10</span></div>
@@ -72,7 +75,7 @@ def render():
                     <span style="font-size:1.3rem;">✨</span>
                     <span style="color:var(--primary-color); font-weight:700; font-size:1rem;">AI Coach Summary</span>
                 </div>
-                <p style="color:var(--text-main); margin:0; font-size:1.05rem; line-height:1.7;">{report['llm_summary']}</p>
+                <p style="color:var(--text-main); margin:0; font-size:1.05rem; line-height:1.7;">{_esc(report['llm_summary'])}</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -111,7 +114,7 @@ def render():
                 st.markdown(f"""
                     <div style="background:var(--card-bg); border:1px solid var(--card-border); padding:1rem 1.25rem; border-radius:12px; margin:0.5rem 0;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <strong style="color:var(--text-main); font-size:1rem;">🟢 {s['topic'].title()}</strong>
+                            <strong style="color:var(--text-main); font-size:1rem;">🟢 {_esc(s['topic'].title())}</strong>
                             <span style="color:#10b981; font-weight:700; font-size:1.1rem;">{s['score']}/10</span>
                         </div>
                         <div style="background:rgba(16,185,129,0.1); border-radius:8px; height:8px; overflow:hidden;">
@@ -128,7 +131,7 @@ def render():
                 st.markdown(f"""
                     <div style="background:var(--card-bg); border:1px solid var(--card-border); padding:1rem 1.25rem; border-radius:12px; margin:0.5rem 0;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <strong style="color:var(--text-main); font-size:1rem;">🔴 {w['topic'].title()}</strong>
+                            <strong style="color:var(--text-main); font-size:1rem;">🔴 {_esc(w['topic'].title())}</strong>
                             <span style="color:{wc}; font-weight:700; font-size:1.1rem;">{w['score']}/10</span>
                         </div>
                         <div style="background:rgba(239,68,68,0.1); border-radius:8px; height:8px; overflow:hidden;">
@@ -170,7 +173,7 @@ def render():
                                     <span style="font-size:0.78rem; opacity:0.6; margin-left:4px;">📌 {topic.title()}</span>
                                 </div>
                             </div>
-                            <div style="font-size:1.1rem; font-weight:500; line-height:1.6;">{rec.get('question', '')}</div>
+                            <div style="font-size:1.1rem; font-weight:500; line-height:1.6;">{_esc(rec.get('question', ''))}</div>
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -199,7 +202,7 @@ def render():
                             st.markdown(f"""
                                 <div style="background:var(--card-bg); border:1px solid var(--card-border);
                                             padding:1rem; border-radius:10px; font-size:0.95rem; color:var(--text-main); line-height:1.6;">
-                                    {raw_ans}
+                                    {_esc(raw_ans)}
                                 </div>
                             """, unsafe_allow_html=True)
 
@@ -212,7 +215,7 @@ def render():
                                     <span style="font-size:1.1rem;">✨</span>
                                     <span style="color:var(--primary-color); font-weight:600; font-size:0.9rem;">AI Coach Feedback</span>
                                 </div>
-                                <p style="color:var(--text-main); margin:0; font-size:0.95rem; line-height:1.65;">{fb['llm_feedback']}</p>
+                                <p style="color:var(--text-main); margin:0; font-size:0.95rem; line-height:1.65;">{_esc(fb['llm_feedback'])}</p>
                             </div>
                         """, unsafe_allow_html=True)
 
@@ -229,15 +232,15 @@ def render():
                                 <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15);
                                             padding:1rem; border-radius:10px; margin:0.4rem 0;">
                                     <div style="color:#10b981; font-weight:600; font-size:0.85rem; margin-bottom:0.5rem;">✅ What you did well</div>
-                                    {''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {s}</div>' for s in strengths)}
+                                    {''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {_esc(s)}</div>' for s in strengths)}
                                 </div>
                             """, unsafe_allow_html=True)
 
                     with fcol2:
                         if weaknesses or missing:
-                            items_html = ''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {w}</div>' for w in weaknesses)
+                            items_html = ''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {_esc(w)}</div>' for w in weaknesses)
                             if missing:
-                                items_html += f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• <strong>Missed:</strong> {", ".join(missing)}</div>'
+                                items_html += f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• <strong>Missed:</strong> {_esc(", ".join(missing))}</div>'
                             st.markdown(f"""
                                 <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15);
                                             padding:1rem; border-radius:10px; margin:0.4rem 0;">
@@ -251,7 +254,7 @@ def render():
                             <div style="background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.15);
                                         padding:1rem; border-radius:10px; margin:0.4rem 0;">
                                 <div style="color:#f59e0b; font-weight:600; font-size:0.85rem; margin-bottom:0.5rem;">💡 Suggestions</div>
-                                {''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {s}</div>' for s in suggestions)}
+                                {''.join(f'<div style="color:var(--text-main); font-size:0.9rem; padding:0.2rem 0;">• {_esc(s)}</div>' for s in suggestions)}
                             </div>
                         """, unsafe_allow_html=True)
 
@@ -339,7 +342,7 @@ def render():
                         <span style="color:#8b5cf6; font-weight:700; font-size:1.1rem;">Optimal Study Plan</span>
                     </div>
                     <p style="color:var(--text-main); margin:0; font-size:1rem; line-height:1.6;">
-                        <strong>{summary_phase['goal']}</strong> — Estimated <strong>{summary_phase['estimated_time']}</strong> of focused study.
+                        <strong>{_esc(summary_phase['goal'])}</strong> — Estimated <strong>{_esc(summary_phase['estimated_time'])}</strong> of focused study.
                     </p>
                 </div>
             """, unsafe_allow_html=True)
@@ -406,14 +409,14 @@ def render():
                 type_icon = {"tutorial": "📘", "documentation": "📄", "practice": "🏋️", "interactive": "💻", "guide": "📋"}.get(r.get('type', '').lower(), "📘")
                 with res_cols[col_idx]:
                     st.markdown(f"""
-                        <a href="{r['url']}" target="_blank" style="text-decoration:none; display:block;">
+                        <a href="{_esc(r['url'])}" target="_blank" style="text-decoration:none; display:block;">
                             <div style="background:var(--card-bg); border:1px solid var(--card-border); padding:1rem; border-radius:12px;
                                         margin-bottom:0.8rem; transition:transform 0.2s, box-shadow 0.2s; cursor:pointer;"
                                  onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.08)';"
                                  onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
                                 <div style="font-size:1.5rem; margin-bottom:0.5rem;">{type_icon}</div>
-                                <div style="color:var(--primary-color); font-weight:600; font-size:0.9rem; margin-bottom:0.3rem;">{r['name']}</div>
-                                <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">{r.get('type','Resource').title()}</div>
+                                <div style="color:var(--primary-color); font-weight:600; font-size:0.9rem; margin-bottom:0.3rem;">{_esc(r['name'])}</div>
+                                <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">{_esc(r.get('type','Resource').title())}</div>
                             </div>
                         </a>
                     """, unsafe_allow_html=True)
@@ -430,7 +433,7 @@ def render():
                     <div style="background:rgba(102,126,234,0.1); color:var(--primary-color); font-weight:700;
                                 width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
                                 font-size:0.8rem; flex-shrink:0; margin-top:2px;">{idx}</div>
-                    <div style="color:var(--text-main); font-size:0.95rem; line-height:1.5;">{rec_text}</div>
+                    <div style="color:var(--text-main); font-size:0.95rem; line-height:1.5;">{_esc(rec_text)}</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -441,7 +444,7 @@ def render():
                 <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15); padding:0.9rem 1.25rem;
                             border-radius:10px; margin:0.4rem 0; display:flex; align-items:center; gap:0.6rem;">
                     <span style="color:#10b981; font-size:1.1rem;">→</span>
-                    <span style="color:var(--text-main); font-size:0.95rem;">{step}</span>
+                    <span style="color:var(--text-main); font-size:0.95rem;">{_esc(step)}</span>
                 </div>
             """, unsafe_allow_html=True)
 
